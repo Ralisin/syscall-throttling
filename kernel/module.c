@@ -6,12 +6,26 @@
 
 static int __init st_module_init(void)
 {
+	int result;
+
 	st_state_initialize();
-	return st_device_register();
+
+	result = st_device_register();
+	if (result)
+		return result;
+
+	result = st_hooks_register();
+	if (result) {
+		st_device_unregister();
+		return result;
+	}
+
+	return 0;
 }
 
 static void __exit st_module_exit(void)
 {
+	st_hooks_unregister();
 	st_device_unregister();
 }
 
