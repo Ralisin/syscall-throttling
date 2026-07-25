@@ -4,10 +4,13 @@ CFLAGS ?= -O2 -Wall -Wextra -Wpedantic -std=c11
 
 .PHONY: all clean
 
-all: test_device
+all: test_device test_hook
 
 test_device: test_device.c ../include/syscall_throttle.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ test_device.c
 
+test_hook: test_hook.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread -o $@ test_hook.c
+
 clean:
-	$(RM) test_device
+	$(RM) test_device test_hook
