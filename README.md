@@ -10,6 +10,10 @@ Al momento sono presenti il device, la configurazione minima di `MAX` e stato
 del monitor, l'utility user space e un primo test del device. Mancano ancora i
 registri e l'intercettazione vera e propria.
 
+La prima prova di intercettazione usa una kporbe sul dispatcher
+`x64_sys_call`. Per ora il wrapper richiama sempre la funzione originale e non
+applica ancora nessun limite.
+
 ## Ambiente
 
 Lo sviluppo viene fatto su una VM Ubuntu 24.04 x86-64. Prima di compilare il
