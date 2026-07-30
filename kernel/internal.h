@@ -16,5 +16,16 @@ void st_state_initialize(void);
 void st_state_get_config(struct st_config *config);
 int st_state_set_max(__u32 max_per_second);
 void st_state_set_enabled(bool enabled);
+int st_state_add_program(const struct st_program *program);
+int st_state_remove_program(const struct st_program *program);
+int st_state_add_uid(const struct st_uid *uid);
+int st_state_remove_uid(const struct st_uid *uid);
+int st_state_add_syscall(const struct st_syscall *syscall);
+int st_state_remove_syscall(const struct st_syscall *syscall);
+int st_state_get_program(struct st_program_entry *entry);
+int st_state_get_uid(struct st_uid_entry *entry);
+int st_state_get_syscall(struct st_syscall_entry *entry);
+bool st_state_matches(__u32 syscall_number, const char *program_name,
+		      __u32 effective_uid);
 
 #endif

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/atomic.h>
+#include <linux/cred.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/module.h>
@@ -7,6 +8,7 @@
 #include <linux/ptrace.h>
 #include <linux/sched.h>
 #include <linux/string.h>
+#include <linux/user_namespace.h>
 #include <linux/wait.h>
 
 #include <asm/unistd.h>
@@ -43,11 +45,10 @@ static DECLARE_WAIT_QUEUE_HEAD(st_hook_drain_queue);
 static bool st_should_redirect(const struct pt_regs *registers)
 {
 	unsigned int syscall_number = (unsigned int)registers->si;
+	__u32 effective_uid;
 
-	if (syscall_number != __NR_getpid && syscall_number != __NR_read)
-		return false;
-
-	return !strncmp(current->comm, "test_hook", TASK_COMM_LEN);
+	effective_uid = from_kuid(&init_user_ns, current_euid());
+	return st_state_matches(syscall_number, current->comm, effective_uid);
 }
 
 static int st_dispatch_pre_handler(struct kprobe *probe,

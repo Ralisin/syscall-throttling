@@ -10,6 +10,9 @@
 
 #define ST_PROGRAM_NAME_LEN 16U
 #define ST_MAX_LIMIT 1000000U
+#define ST_MAX_PROGRAMS 64U
+#define ST_MAX_UIDS 64U
+#define ST_MAX_SYSCALLS 64U
 
 struct st_program {
 	char name[ST_PROGRAM_NAME_LEN];
@@ -79,7 +82,4 @@ struct st_stats {
 #define ST_IOC_GET_PROGRAM       _IOWR(ST_IOC_MAGIC, 0x0b, struct st_program_entry)
 #define ST_IOC_GET_UID           _IOWR(ST_IOC_MAGIC, 0x0c, struct st_uid_entry)
 #define ST_IOC_GET_SYSCALL       _IOWR(ST_IOC_MAGIC, 0x0d, struct st_syscall_entry)
-#define ST_IOC_GET_STATS         _IOR(ST_IOC_MAGIC, 0x0e, struct st_stats)
-#define ST_IOC_RESET_STATS       _IO(ST_IOC_MAGIC, 0x0f)
-
 #endif
