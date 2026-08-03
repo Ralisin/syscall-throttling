@@ -9,7 +9,10 @@ fi
 project_directory=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 module_path=$project_directory/kernel/syscall_throttle.ko
 workload_path=$project_directory/tests/test_hook
+control_path=$project_directory/user/throttle_ctl
 module_directory=/sys/module/syscall_throttle
+test_user=${SUDO_USER:-root}
+test_uid=$(id -u "$test_user")
 
 unload_module()
 {
@@ -27,6 +30,31 @@ load_module()
 	fi
 }
 
+configure_program_match()
+{
+	"$control_path" add-program test_hook
+	"$control_path" add-syscall 0
+	"$control_path" add-syscall 39
+	"$control_path" enable
+}
+
+configure_uid_match()
+{
+	"$control_path" add-uid "$test_uid"
+	"$control_path" add-syscall 0
+	"$control_path" add-syscall 39
+	"$control_path" enable
+}
+
+run_workload()
+{
+	if [ "$test_user" = root ]; then
+		"$workload_path" "$@"
+	else
+		runuser -u "$test_user" -- "$workload_path" "$@"
+	fi
+}
+
 trap unload_module EXIT INT TERM
 
 if [ -d "$module_directory" ]; then
@@ -40,10 +68,11 @@ if ! grep -q ' x64_sys_call$' /proc/kallsyms; then
 fi
 
 load_module
+configure_program_match
 getpid_before=$(cat "$module_directory/parameters/getpid_hook_hits")
 read_before=$(cat "$module_directory/parameters/read_hook_hits")
 
-"$workload_path"
+run_workload
 
 getpid_after=$(cat "$module_directory/parameters/getpid_hook_hits")
 read_after=$(cat "$module_directory/parameters/read_hook_hits")
@@ -60,16 +89,25 @@ fi
 
 unload_module
 
+if [ "$test_user" != root ]; then
+	load_module
+	configure_uid_match
+	run_workload >/dev/null
+	unload_module
+fi
+
 iteration=1
 while [ "$iteration" -le 5 ]; do
 	load_module
-	"$workload_path" >/dev/null
+	configure_program_match
+	run_workload >/dev/null
 	unload_module
 	iteration=$((iteration + 1))
 done
 
 load_module
-"$workload_path" blocking-read &
+configure_program_match
+run_workload blocking-read &
 workload_pid=$!
 sleep 0.2
 unload_module

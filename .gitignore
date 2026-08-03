@@ -12,6 +12,7 @@ modules.order
 user/throttle_ctl
 tests/test_device
 tests/test_hook
+tests/test_registry
 
 *.swp
 *~
