@@ -27,3 +27,19 @@ nella VM.
 
 Lo script `experiments/check-interception.sh` raccoglie i controlli fatti prima
 di scegliere il meccanismo.
+
+## Identificazione del programma
+
+Per il nome uso `current->comm`. E' disponibile direttamente nel task corrente
+e il confronto nel pre-handler rimane breve, ma ci sono due conseguenze:
+
+- il campo contiene al massimo 15 caratteri oltre al terminatore;
+- identifica il task e puo' essere cambiato, quindi non equivale a un percorso
+  completo dell'eseguibile.
+
+Ho scelto registri con dimensione massima fissa. Si perde flessibilita', ma il
+tempo del filtro resta limitato e non servono allocazioni dentro la probe.
+
+Le letture indicizzate portano con se' la generazione della configurazione. Se
+il registro cambia durante una lettura, l'utility riceve `EAGAIN` e ricomincia
+la scansione invece di stampare una configurazione mista.
