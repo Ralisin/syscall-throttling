@@ -12,6 +12,12 @@ void st_device_unregister(void);
 int st_hooks_register(void);
 void st_hooks_unregister(void);
 
+int st_monitor_initialize(void);
+void st_monitor_destroy(void);
+void st_monitor_configuration_changed(bool reset_window);
+void st_monitor_stop(void);
+int st_monitor_admit(__u32 syscall_number);
+
 void st_state_initialize(void);
 void st_state_get_config(struct st_config *config);
 int st_state_set_max(__u32 max_per_second);
@@ -27,5 +33,7 @@ int st_state_get_uid(struct st_uid_entry *entry);
 int st_state_get_syscall(struct st_syscall_entry *entry);
 bool st_state_matches(__u32 syscall_number, const char *program_name,
 		      __u32 effective_uid);
+bool st_state_get_admission(__u32 syscall_number, const char *program_name,
+			    __u32 effective_uid, __u32 *max_per_second);
 
 #endif

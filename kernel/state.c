@@ -17,6 +17,7 @@ struct st_state {
 };
 
 static DEFINE_SPINLOCK(st_config_lock);
+/* st_config_lock protects every field in st_state. */
 static struct st_state st_state;
 
 static void st_advance_generation(void)
@@ -72,6 +73,7 @@ int st_state_set_max(__u32 max_per_second)
 	st_state.config.max_per_second = max_per_second;
 	st_advance_generation();
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	st_monitor_configuration_changed(false);
 
 	return 0;
 }
@@ -84,6 +86,7 @@ void st_state_set_enabled(bool enabled)
 	st_state.config.enabled = enabled;
 	st_advance_generation();
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	st_monitor_configuration_changed(!enabled);
 }
 
 int st_state_add_program(const struct st_program *program)
@@ -116,6 +119,8 @@ int st_state_add_program(const struct st_program *program)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -152,6 +157,8 @@ int st_state_remove_program(const struct st_program *program)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -182,6 +189,8 @@ int st_state_add_uid(const struct st_uid *uid)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -214,6 +223,8 @@ int st_state_remove_uid(const struct st_uid *uid)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -225,6 +236,10 @@ int st_state_add_syscall(const struct st_syscall *syscall)
 
 	if (syscall->number < 0 || syscall->number >= NR_syscalls)
 		return -ERANGE;
+	if (syscall->number == __NR_exit ||
+	    syscall->number == __NR_exit_group ||
+	    syscall->number == __NR_rt_sigreturn)
+		return -EOPNOTSUPP;
 
 	spin_lock_irqsave(&st_config_lock, flags);
 	for (index = 0; index < st_state.config.syscall_count; index++) {
@@ -244,6 +259,8 @@ int st_state_add_syscall(const struct st_syscall *syscall)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -255,6 +272,10 @@ int st_state_remove_syscall(const struct st_syscall *syscall)
 
 	if (syscall->number < 0 || syscall->number >= NR_syscalls)
 		return -ERANGE;
+	if (syscall->number == __NR_exit ||
+	    syscall->number == __NR_exit_group ||
+	    syscall->number == __NR_rt_sigreturn)
+		return -EOPNOTSUPP;
 
 	spin_lock_irqsave(&st_config_lock, flags);
 	for (index = 0; index < st_state.config.syscall_count; index++) {
@@ -277,6 +298,8 @@ int st_state_remove_syscall(const struct st_syscall *syscall)
 	result = 0;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
+	if (!result)
+		st_monitor_configuration_changed(false);
 	return result;
 }
 
@@ -371,6 +394,50 @@ bool st_state_matches(__u32 syscall_number, const char *program_name,
 			break;
 		}
 	}
+out:
+	spin_unlock_irqrestore(&st_config_lock, flags);
+	return syscall_matches && identity_matches;
+}
+
+bool st_state_get_admission(__u32 syscall_number, const char *program_name,
+			    __u32 effective_uid, __u32 *max_per_second)
+{
+	unsigned long flags;
+	bool identity_matches = false;
+	bool syscall_matches = false;
+	__u32 index;
+
+	spin_lock_irqsave(&st_config_lock, flags);
+	if (!st_state.config.enabled)
+		goto out;
+
+	for (index = 0; index < st_state.config.syscall_count; index++) {
+		if ((__u32)st_state.syscalls[index].number == syscall_number) {
+			syscall_matches = true;
+			break;
+		}
+	}
+	if (!syscall_matches)
+		goto out;
+
+	for (index = 0; index < st_state.config.program_count; index++) {
+		if (!strncmp(st_state.programs[index].name, program_name,
+			     ST_PROGRAM_NAME_LEN)) {
+			identity_matches = true;
+			break;
+		}
+	}
+	if (!identity_matches) {
+		for (index = 0; index < st_state.config.uid_count; index++) {
+			if (st_state.uids[index].value == effective_uid) {
+				identity_matches = true;
+				break;
+			}
+		}
+	}
+
+	if (identity_matches)
+		*max_per_second = st_state.config.max_per_second;
 out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
 	return syscall_matches && identity_matches;

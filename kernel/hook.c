@@ -29,6 +29,12 @@ struct st_dispatch_hook {
 	bool registered;
 };
 
+/*
+ * Counters are atomic. A release/acquire pair on registered publishes original
+ * before a pre-handler may redirect; unregister_kprobe() excludes handlers
+ * before registered is cleared. The drain queue observes active_calls.
+ */
+
 static long st_dispatch_wrapper(const struct pt_regs *registers,
 				unsigned int syscall_number);
 
@@ -57,6 +63,9 @@ static int st_dispatch_pre_handler(struct kprobe *probe,
 	unsigned long return_address;
 
 	(void)probe;
+
+	if (!smp_load_acquire(&st_dispatch.registered))
+		return 0;
 
 	if (!st_should_redirect(registers))
 		return 0;
@@ -91,7 +100,9 @@ static long st_dispatch_wrapper(const struct pt_regs *registers,
 	else if (syscall_number == __NR_read)
 		atomic64_inc(&st_dispatch.read_hits);
 
-	result = st_dispatch.original(registers, syscall_number);
+	result = st_monitor_admit(syscall_number);
+	if (!result)
+		result = st_dispatch.original(registers, syscall_number);
 
 	if (atomic_dec_and_test(&st_dispatch.active_calls))
 		wake_up_all(&st_hook_drain_queue);
@@ -142,7 +153,7 @@ int st_hooks_register(void)
 
 	st_dispatch.original =
 		(st_dispatch_function)st_dispatch.probe.addr;
-	st_dispatch.registered = true;
+	smp_store_release(&st_dispatch.registered, true);
 	pr_info("syscall dispatcher redirection enabled\n");
 	return 0;
 }
@@ -154,6 +165,7 @@ void st_hooks_unregister(void)
 
 	unregister_kprobe(&st_dispatch.probe);
 	st_dispatch.registered = false;
+	st_monitor_stop();
 
 	wait_event(st_hook_drain_queue,
 		   atomic_read(&st_dispatch.active_calls) == 0);
