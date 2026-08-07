@@ -13,6 +13,7 @@ user/throttle_ctl
 tests/test_device
 tests/test_hook
 tests/test_registry
+tests/test_throttle
 
 *.swp
 *~

@@ -35,6 +35,7 @@ configure_program_match()
 	"$control_path" add-program test_hook
 	"$control_path" add-syscall 0
 	"$control_path" add-syscall 39
+	"$control_path" set-max 1000000
 	"$control_path" enable
 }
 
@@ -43,6 +44,7 @@ configure_uid_match()
 	"$control_path" add-uid "$test_uid"
 	"$control_path" add-syscall 0
 	"$control_path" add-syscall 39
+	"$control_path" set-max 1000000
 	"$control_path" enable
 }
 

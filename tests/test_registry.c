@@ -57,6 +57,9 @@ static int test_validation(int descriptor)
 	struct st_syscall invalid_syscall = {
 		.number = INT32_MAX,
 	};
+	struct st_syscall unsupported_syscall = {
+		.number = SYS_exit,
+	};
 	struct st_uid invalid_uid = {
 		.value = UINT32_MAX,
 	};
@@ -74,6 +77,8 @@ static int test_validation(int descriptor)
 			 "invalid UID") ||
 	    expect_error(descriptor, ST_IOC_ADD_SYSCALL, &invalid_syscall,
 			 ERANGE, "invalid syscall") ||
+	    expect_error(descriptor, ST_IOC_ADD_SYSCALL, &unsupported_syscall,
+			 EOPNOTSUPP, "non-returning syscall") ||
 	    expect_error(descriptor, ST_IOC_GET_PROGRAM, &entry, EINVAL,
 			 "nonzero reserved field") ||
 	    expect_error(descriptor, unknown_command, NULL, ENOTTY,
@@ -211,13 +216,13 @@ static int test_capacities(int descriptor)
 		return -1;
 
 	for (index = 0; index < ST_MAX_SYSCALLS; index++) {
-		syscall.number = index;
+		syscall.number = 100 + index;
 		if (ioctl(descriptor, ST_IOC_ADD_SYSCALL, &syscall) == -1) {
 			perror("fill syscall registry");
 			return -1;
 		}
 	}
-	syscall.number = ST_MAX_SYSCALLS;
+	syscall.number = 100 + ST_MAX_SYSCALLS;
 	if (expect_error(descriptor, ST_IOC_ADD_SYSCALL, &syscall, ENOSPC,
 			 "full syscall registry"))
 		return -1;
@@ -234,7 +239,7 @@ static int test_capacities(int descriptor)
 			return -1;
 	}
 	for (index = 0; index < ST_MAX_SYSCALLS; index++) {
-		syscall.number = index;
+		syscall.number = 100 + index;
 		if (ioctl(descriptor, ST_IOC_REMOVE_SYSCALL, &syscall) == -1)
 			return -1;
 	}
