@@ -43,3 +43,21 @@ tempo del filtro resta limitato e non servono allocazioni dentro la probe.
 Le letture indicizzate portano con se' la generazione della configurazione. Se
 il registro cambia durante una lettura, l'utility riceve `EAGAIN` e ricomincia
 la scansione invece di stampare una configurazione mista.
+
+## Significato di MAX e finestra temporale
+
+La traccia non specifica se il limite sia per processo o complessivo. Ho scelto
+un solo limite globale condiviso da tutte le chiamate selezionate. E' la
+lettura piu' semplice della frase "numero massimo di system call" e permette di
+verificare facilmente il risultato con piu' processi concorrenti.
+
+Per il secondo uso una finestra mobile, non intervalli allineati all'orologio.
+Il monitor conserva i timestamp delle chiamate ammesse in un buffer circolare:
+prima di ammettere una nuova chiamata elimina quelli vecchi di almeno un
+secondo. Se il buffer contiene gia' `MAX` elementi, il processo dorme fino alla
+prima scadenza utile.
+
+Ogni modifica della configurazione incrementa `wake_generation` e sveglia la
+wait queue. Il processo confronta la generazione salvata e rivaluta tutto lo
+stato, perche' durante l'attesa potrebbero essere cambiati `MAX`, il monitor o
+uno dei registri.
