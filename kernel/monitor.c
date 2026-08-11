@@ -5,6 +5,7 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/mutex.h>
+#include <linux/overflow.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/user_namespace.h>
@@ -23,6 +24,9 @@ struct st_monitor {
 	__u32 head;
 	__u32 count;
 	bool stopping;
+	struct st_stats stats;
+	__u64 stats_start_ns;
+	__u64 stats_update_ns;
 };
 
 /*
@@ -32,6 +36,59 @@ struct st_monitor {
  */
 
 static struct st_monitor st_monitor;
+
+static void st_monitor_integrate_blocked_time(__u64 now)
+{
+	__u64 increment;
+	__u64 total;
+	__u64 duration = now - st_monitor.stats_update_ns;
+
+	if (check_mul_overflow(duration,
+			       (__u64)st_monitor.stats.current_blocked_threads,
+			       &increment) ||
+	    check_add_overflow(st_monitor.stats.blocked_thread_time_ns,
+			       increment, &total))
+		st_monitor.stats.blocked_thread_time_ns = U64_MAX;
+	else
+		st_monitor.stats.blocked_thread_time_ns = total;
+	st_monitor.stats_update_ns = now;
+}
+
+static void st_monitor_wait_started(__u64 now)
+{
+	st_monitor_integrate_blocked_time(now);
+	st_monitor.stats.current_blocked_threads++;
+	if (st_monitor.stats.current_blocked_threads >
+	    st_monitor.stats.peak_blocked_threads)
+		st_monitor.stats.peak_blocked_threads =
+			st_monitor.stats.current_blocked_threads;
+}
+
+static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns,
+				     const char *program_name,
+				     __u32 effective_uid, bool executed)
+{
+	__u64 measured_start;
+	__u64 delay;
+
+	st_monitor_integrate_blocked_time(now);
+	if (st_monitor.stats.current_blocked_threads > 0)
+		st_monitor.stats.current_blocked_threads--;
+
+	if (!executed)
+		return;
+
+	measured_start = max(wait_started_ns, st_monitor.stats_start_ns);
+	delay = now - measured_start;
+	if (st_monitor.stats.throttled_calls != U64_MAX)
+		st_monitor.stats.throttled_calls++;
+	if (delay > st_monitor.stats.peak_delay_ns) {
+		st_monitor.stats.peak_delay_ns = delay;
+		st_monitor.stats.peak_uid = effective_uid;
+		memcpy(st_monitor.stats.peak_program, program_name,
+		       ST_PROGRAM_NAME_LEN);
+	}
+}
 
 static void st_monitor_prune(__u64 now)
 {
@@ -47,6 +104,8 @@ static void st_monitor_prune(__u64 now)
 
 int st_monitor_initialize(void)
 {
+	__u64 now;
+
 	mutex_init(&st_monitor.lock);
 	init_waitqueue_head(&st_monitor.wait_queue);
 	st_monitor.timestamps = kvcalloc(ST_MAX_LIMIT,
@@ -58,6 +117,10 @@ int st_monitor_initialize(void)
 	st_monitor.head = 0;
 	st_monitor.count = 0;
 	st_monitor.stopping = false;
+	memset(&st_monitor.stats, 0, sizeof(st_monitor.stats));
+	now = ktime_get_ns();
+	st_monitor.stats_start_ns = now;
+	st_monitor.stats_update_ns = now;
 	return 0;
 }
 
@@ -90,24 +153,37 @@ void st_monitor_stop(void)
 
 int st_monitor_admit(__u32 syscall_number)
 {
+	char program_name[ST_PROGRAM_NAME_LEN];
 	__u32 effective_uid;
 	__u32 max_per_second;
 	__u64 captured_generation;
 	__u64 deadline;
 	__u64 now;
 	long wait_result;
+	bool blocked = false;
+	__u64 wait_started_ns = 0;
+
+	get_task_comm(program_name, current);
+	effective_uid = from_kuid(&init_user_ns, current_euid());
 
 	for (;;) {
-		effective_uid = from_kuid(&init_user_ns, current_euid());
 		mutex_lock(&st_monitor.lock);
 
 		if (st_monitor.stopping) {
+			if (blocked)
+				st_monitor_wait_finished(ktime_get_ns(),
+					wait_started_ns, program_name,
+					effective_uid, false);
 			mutex_unlock(&st_monitor.lock);
 			return -EINTR;
 		}
 
-		if (!st_state_get_admission(syscall_number, current->comm,
+		if (!st_state_get_admission(syscall_number, program_name,
 					    effective_uid, &max_per_second)) {
+			if (blocked)
+				st_monitor_wait_finished(ktime_get_ns(),
+					wait_started_ns, program_name,
+					effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
 		}
@@ -120,8 +196,16 @@ int st_monitor_admit(__u32 syscall_number)
 
 			st_monitor.timestamps[tail] = now;
 			st_monitor.count++;
+			if (blocked)
+				st_monitor_wait_finished(now, wait_started_ns,
+					program_name, effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
+		}
+		if (!blocked) {
+			blocked = true;
+			wait_started_ns = now;
+			st_monitor_wait_started(now);
 		}
 
 		deadline = st_monitor.timestamps[st_monitor.head] + ST_WINDOW_NS;
@@ -134,7 +218,41 @@ int st_monitor_admit(__u32 syscall_number)
 			atomic64_read(&st_monitor.wake_generation) !=
 				captured_generation,
 			ns_to_ktime(deadline - now));
-		if (wait_result == -ERESTARTSYS)
+		if (wait_result == -ERESTARTSYS) {
+			mutex_lock(&st_monitor.lock);
+			st_monitor_wait_finished(ktime_get_ns(), wait_started_ns,
+					 program_name, effective_uid, false);
+			mutex_unlock(&st_monitor.lock);
 			return -ERESTARTSYS;
+		}
 	}
+}
+
+void st_monitor_get_stats(struct st_stats *stats)
+{
+	__u64 now;
+
+	mutex_lock(&st_monitor.lock);
+	now = ktime_get_ns();
+	st_monitor_integrate_blocked_time(now);
+	*stats = st_monitor.stats;
+	stats->elapsed_ns = now - st_monitor.stats_start_ns;
+	stats->reserved = 0;
+	mutex_unlock(&st_monitor.lock);
+}
+
+void st_monitor_reset_stats(void)
+{
+	__u32 current_blocked_threads;
+	__u64 now;
+
+	mutex_lock(&st_monitor.lock);
+	now = ktime_get_ns();
+	current_blocked_threads = st_monitor.stats.current_blocked_threads;
+	memset(&st_monitor.stats, 0, sizeof(st_monitor.stats));
+	st_monitor.stats.current_blocked_threads = current_blocked_threads;
+	st_monitor.stats.peak_blocked_threads = current_blocked_threads;
+	st_monitor.stats_start_ns = now;
+	st_monitor.stats_update_ns = now;
+	mutex_unlock(&st_monitor.lock);
 }

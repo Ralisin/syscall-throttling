@@ -82,4 +82,6 @@ struct st_stats {
 #define ST_IOC_GET_PROGRAM       _IOWR(ST_IOC_MAGIC, 0x0b, struct st_program_entry)
 #define ST_IOC_GET_UID           _IOWR(ST_IOC_MAGIC, 0x0c, struct st_uid_entry)
 #define ST_IOC_GET_SYSCALL       _IOWR(ST_IOC_MAGIC, 0x0d, struct st_syscall_entry)
+#define ST_IOC_GET_STATS         _IOR(ST_IOC_MAGIC, 0x0e, struct st_stats)
+#define ST_IOC_RESET_STATS       _IO(ST_IOC_MAGIC, 0x0f)
 #endif

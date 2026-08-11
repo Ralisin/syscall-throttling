@@ -17,6 +17,8 @@ void st_monitor_destroy(void);
 void st_monitor_configuration_changed(bool reset_window);
 void st_monitor_stop(void);
 int st_monitor_admit(__u32 syscall_number);
+void st_monitor_get_stats(struct st_stats *stats);
+void st_monitor_reset_stats(void);
 
 void st_state_initialize(void);
 void st_state_get_config(struct st_config *config);

@@ -20,6 +20,7 @@ static bool st_is_configuration_command(unsigned int command)
 	case ST_IOC_SET_MAX:
 	case ST_IOC_ENABLE:
 	case ST_IOC_DISABLE:
+	case ST_IOC_RESET_STATS:
 		return true;
 	default:
 		return false;
@@ -34,6 +35,7 @@ static long st_device_ioctl(struct file *file, unsigned int command,
 	struct st_program_entry program_entry;
 	struct st_syscall syscall;
 	struct st_syscall_entry syscall_entry;
+	struct st_stats stats;
 	struct st_uid uid;
 	struct st_uid_entry uid_entry;
 	void __user *user_argument = (void __user *)argument;
@@ -134,6 +136,16 @@ static long st_device_ioctl(struct file *file, unsigned int command,
 		if (copy_to_user(user_argument, &syscall_entry,
 				 sizeof(syscall_entry)))
 			return -EFAULT;
+		return 0;
+
+	case ST_IOC_GET_STATS:
+		st_monitor_get_stats(&stats);
+		if (copy_to_user(user_argument, &stats, sizeof(stats)))
+			return -EFAULT;
+		return 0;
+
+	case ST_IOC_RESET_STATS:
+		st_monitor_reset_stats();
 		return 0;
 
 	default:
