@@ -26,6 +26,8 @@ static void print_usage(FILE *stream, const char *program)
 	fprintf(stream,
 		"Usage:\n"
 		"  %s status\n"
+		"  %s stats\n"
+		"  %s reset-stats\n"
 		"  %s list\n"
 		"  %s add-program NAME\n"
 		"  %s remove-program NAME\n"
@@ -36,8 +38,8 @@ static void print_usage(FILE *stream, const char *program)
 		"  %s set-max NUMBER\n"
 		"  %s enable\n"
 		"  %s disable\n",
-		program, program, program, program, program, program,
-		program, program, program, program, program);
+		program, program, program, program, program, program, program,
+		program, program, program, program, program, program);
 }
 
 static int parse_u32(const char *text, __u32 *value)
@@ -95,6 +97,30 @@ static void print_status(const struct st_config *config)
 static int get_config(int descriptor, struct st_config *config)
 {
 	return ioctl(descriptor, ST_IOC_GET_CONFIG, config);
+}
+
+static void print_stats(const struct st_stats *stats)
+{
+	double average = 0.0;
+
+	if (stats->elapsed_ns != 0)
+		average = (double)stats->blocked_thread_time_ns /
+			  (double)stats->elapsed_ns;
+
+	printf("interval_ns: %" PRIu64 "\n", (uint64_t)stats->elapsed_ns);
+	printf("blocked_thread_time_ns: %" PRIu64 "\n",
+	       (uint64_t)stats->blocked_thread_time_ns);
+	printf("average_blocked_threads: %.6f\n", average);
+	printf("current_blocked_threads: %" PRIu32 "\n",
+	       stats->current_blocked_threads);
+	printf("peak_blocked_threads: %" PRIu32 "\n",
+	       stats->peak_blocked_threads);
+	printf("throttled_calls: %" PRIu64 "\n",
+	       (uint64_t)stats->throttled_calls);
+	printf("peak_delay_ns: %" PRIu64 "\n",
+	       (uint64_t)stats->peak_delay_ns);
+	printf("peak_program: %s\n", stats->peak_program);
+	printf("peak_uid: %" PRIu32 "\n", stats->peak_uid);
 }
 
 static int read_snapshot(int descriptor,
@@ -200,6 +226,7 @@ int main(int argument_count, char **arguments)
 	struct st_syscall syscall;
 	struct st_uid uid;
 	struct st_config config;
+	struct st_stats stats;
 	__u32 max_per_second;
 	unsigned long command;
 	int descriptor;
@@ -220,6 +247,13 @@ int main(int argument_count, char **arguments)
 		result = get_config(descriptor, &config);
 		if (result != -1)
 			print_status(&config);
+	} else if (!strcmp(arguments[1], "stats") && argument_count == 2) {
+		result = ioctl(descriptor, ST_IOC_GET_STATS, &stats);
+		if (result != -1)
+			print_stats(&stats);
+	} else if (!strcmp(arguments[1], "reset-stats") &&
+		   argument_count == 2) {
+		result = ioctl(descriptor, ST_IOC_RESET_STATS);
 	} else if (!strcmp(arguments[1], "list") && argument_count == 2) {
 		result = list_configuration(descriptor);
 	} else if ((!strcmp(arguments[1], "add-program") ||
