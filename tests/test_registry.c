@@ -81,6 +81,8 @@ static int test_validation(int descriptor)
 			 EOPNOTSUPP, "non-returning syscall") ||
 	    expect_error(descriptor, ST_IOC_GET_PROGRAM, &entry, EINVAL,
 			 "nonzero reserved field") ||
+	    expect_error(descriptor, ST_IOC_GET_STATS, (void *)1, EFAULT,
+			 "invalid stats pointer") ||
 	    expect_error(descriptor, unknown_command, NULL, ENOTTY,
 			 "unknown command"))
 		return -1;
