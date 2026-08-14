@@ -61,3 +61,15 @@ Ogni modifica della configurazione incrementa `wake_generation` e sveglia la
 wait queue. Il processo confronta la generazione salvata e rivaluta tutto lo
 stato, perche' durante l'attesa potrebbero essere cambiati `MAX`, il monitor o
 uno dei registri.
+
+## Statistiche
+
+La media dei thread bloccati non puo' essere calcolata facendo la media di
+campioni presi a intervalli arbitrari. Mantengo invece l'integrale nel tempo:
+ogni volta che il numero di waiter cambia aggiungo
+`durata * thread_bloccati` al totale. Dividendo per il tempo trascorso ottengo
+la media richiesta.
+
+Il reset non porta a zero `current_blocked_threads`, perche' quei processi sono
+ancora realmente in attesa. Azzera l'intervallo precedente e usa il numero
+corrente come valore iniziale e come primo picco del nuovo intervallo.
