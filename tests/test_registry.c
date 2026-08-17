@@ -60,10 +60,21 @@ static int test_validation(int descriptor)
 	struct st_syscall unsupported_syscall = {
 		.number = SYS_exit,
 	};
+	struct st_syscall unsupported_exit_group = {
+		.number = SYS_exit_group,
+	};
+	struct st_syscall unsupported_sigreturn = {
+		.number = SYS_rt_sigreturn,
+	};
 	struct st_uid invalid_uid = {
 		.value = UINT32_MAX,
 	};
 	unsigned long unknown_command = _IO(ST_IOC_MAGIC, 0x7f);
+	unsigned long wrong_magic = _IO(ST_IOC_MAGIC + 1, 0x01);
+	unsigned long wrong_size = _IOW(ST_IOC_MAGIC, 0x07, uint64_t);
+	uint32_t zero_max = 0;
+	uint32_t excessive_max = ST_MAX_LIMIT + 1U;
+	uint32_t valid_max = 1;
 
 	memset(&long_program, 'x', sizeof(long_program));
 
@@ -79,12 +90,30 @@ static int test_validation(int descriptor)
 			 ERANGE, "invalid syscall") ||
 	    expect_error(descriptor, ST_IOC_ADD_SYSCALL, &unsupported_syscall,
 			 EOPNOTSUPP, "non-returning syscall") ||
+	    expect_error(descriptor, ST_IOC_ADD_SYSCALL,
+			 &unsupported_exit_group, EOPNOTSUPP,
+			 "non-returning exit-group syscall") ||
+	    expect_error(descriptor, ST_IOC_ADD_SYSCALL,
+			 &unsupported_sigreturn, EOPNOTSUPP,
+			 "special sigreturn syscall") ||
+	    expect_error(descriptor, ST_IOC_SET_MAX, (void *)1, EFAULT,
+			 "invalid MAX pointer") ||
+	    expect_error(descriptor, ST_IOC_SET_MAX, &zero_max, ERANGE,
+			 "zero MAX") ||
+	    expect_error(descriptor, ST_IOC_SET_MAX, &excessive_max, ERANGE,
+			 "excessive MAX") ||
 	    expect_error(descriptor, ST_IOC_GET_PROGRAM, &entry, EINVAL,
 			 "nonzero reserved field") ||
 	    expect_error(descriptor, ST_IOC_GET_STATS, (void *)1, EFAULT,
 			 "invalid stats pointer") ||
+	    expect_error(descriptor, wrong_magic, NULL, ENOTTY,
+			 "wrong ioctl magic") ||
+	    expect_error(descriptor, wrong_size, &valid_max, ENOTTY,
+			 "wrong ioctl size") ||
 	    expect_error(descriptor, unknown_command, NULL, ENOTTY,
 			 "unknown command"))
+		return -1;
+	if (ioctl(descriptor, ST_IOC_SET_MAX, &valid_max) == -1)
 		return -1;
 
 	return 0;

@@ -15,6 +15,7 @@ tests/test_hook
 tests/test_registry
 tests/test_throttle
 tests/test_stats
+tests/test_stress
 
 *.swp
 *~
