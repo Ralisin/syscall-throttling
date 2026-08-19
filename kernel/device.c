@@ -4,6 +4,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/uaccess.h>
 
 #include "internal.h"
@@ -21,6 +22,7 @@ static bool st_is_configuration_command(unsigned int command)
 	case ST_IOC_ENABLE:
 	case ST_IOC_DISABLE:
 	case ST_IOC_RESET_STATS:
+	case ST_IOC_CONFIGURE:
 		return true;
 	default:
 		return false;
@@ -38,6 +40,7 @@ static long st_device_ioctl(struct file *file, unsigned int command,
 	struct st_stats stats;
 	struct st_uid uid;
 	struct st_uid_entry uid_entry;
+	struct st_configuration_update *update;
 	void __user *user_argument = (void __user *)argument;
 	__u32 max_per_second;
 	int result;
@@ -147,6 +150,14 @@ static long st_device_ioctl(struct file *file, unsigned int command,
 	case ST_IOC_RESET_STATS:
 		st_monitor_reset_stats();
 		return 0;
+
+	case ST_IOC_CONFIGURE:
+		update = memdup_user(user_argument, sizeof(*update));
+		if (IS_ERR(update))
+			return PTR_ERR(update);
+		result = st_state_configure(update);
+		kfree(update);
+		return result;
 
 	default:
 		return -ENOTTY;

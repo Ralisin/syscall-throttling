@@ -67,6 +67,28 @@ struct st_stats {
 	char peak_program[ST_PROGRAM_NAME_LEN];
 };
 
+#define ST_CONFIGURE_CLEAR       (1U << 0)
+#define ST_CONFIGURE_SET_MAX     (1U << 1)
+#define ST_CONFIGURE_SET_ENABLED (1U << 2)
+#define ST_CONFIGURE_RESET_STATS (1U << 3)
+#define ST_CONFIGURE_VALID_FLAGS (ST_CONFIGURE_CLEAR | \
+				  ST_CONFIGURE_SET_MAX | \
+				  ST_CONFIGURE_SET_ENABLED | \
+				  ST_CONFIGURE_RESET_STATS)
+
+struct st_configuration_update {
+	__u32 flags;
+	__u32 max_per_second;
+	__u32 program_count;
+	__u32 uid_count;
+	__u32 syscall_count;
+	__u8 enabled;
+	__u8 reserved[3];
+	struct st_program programs[ST_MAX_PROGRAMS];
+	struct st_uid uids[ST_MAX_UIDS];
+	struct st_syscall syscalls[ST_MAX_SYSCALLS];
+};
+
 #define ST_IOC_MAGIC 0xB7
 
 #define ST_IOC_ADD_PROGRAM       _IOW(ST_IOC_MAGIC, 0x01, struct st_program)
@@ -84,4 +106,6 @@ struct st_stats {
 #define ST_IOC_GET_SYSCALL       _IOWR(ST_IOC_MAGIC, 0x0d, struct st_syscall_entry)
 #define ST_IOC_GET_STATS         _IOR(ST_IOC_MAGIC, 0x0e, struct st_stats)
 #define ST_IOC_RESET_STATS       _IO(ST_IOC_MAGIC, 0x0f)
+#define ST_IOC_CONFIGURE         _IOW(ST_IOC_MAGIC, 0x10, \
+				      struct st_configuration_update)
 #endif

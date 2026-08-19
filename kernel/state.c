@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/errno.h>
+#include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/uidgid.h>
@@ -39,6 +40,74 @@ static int st_normalize_program(const struct st_program *program,
 
 	memset(normalized, 0, sizeof(*normalized));
 	memcpy(normalized->name, program->name, length);
+	return 0;
+}
+
+static int st_validate_syscall(const struct st_syscall *syscall)
+{
+	if (syscall->number < 0 || syscall->number >= NR_syscalls)
+		return -ERANGE;
+	if (syscall->number == __NR_exit ||
+	    syscall->number == __NR_exit_group ||
+	    syscall->number == __NR_rt_sigreturn)
+		return -EOPNOTSUPP;
+	return 0;
+}
+
+static int st_candidate_add_program(struct st_state *candidate,
+				    const struct st_program *program)
+{
+	struct st_program normalized;
+	__u32 index;
+	int result;
+
+	result = st_normalize_program(program, &normalized);
+	if (result)
+		return result;
+	for (index = 0; index < candidate->config.program_count; index++) {
+		if (!memcmp(candidate->programs[index].name, normalized.name,
+			    ST_PROGRAM_NAME_LEN))
+			return 0;
+	}
+	if (candidate->config.program_count == ST_MAX_PROGRAMS)
+		return -ENOSPC;
+	candidate->programs[candidate->config.program_count++] = normalized;
+	return 0;
+}
+
+static int st_candidate_add_uid(struct st_state *candidate,
+				const struct st_uid *uid)
+{
+	__u32 index;
+
+	if (!uid_valid(make_kuid(&init_user_ns, uid->value)))
+		return -EINVAL;
+	for (index = 0; index < candidate->config.uid_count; index++) {
+		if (candidate->uids[index].value == uid->value)
+			return 0;
+	}
+	if (candidate->config.uid_count == ST_MAX_UIDS)
+		return -ENOSPC;
+	candidate->uids[candidate->config.uid_count++] = *uid;
+	return 0;
+}
+
+static int st_candidate_add_syscall(struct st_state *candidate,
+				    const struct st_syscall *syscall)
+{
+	__u32 index;
+	int result;
+
+	result = st_validate_syscall(syscall);
+	if (result)
+		return result;
+	for (index = 0; index < candidate->config.syscall_count; index++) {
+		if (candidate->syscalls[index].number == syscall->number)
+			return 0;
+	}
+	if (candidate->config.syscall_count == ST_MAX_SYSCALLS)
+		return -ENOSPC;
+	candidate->syscalls[candidate->config.syscall_count++] = *syscall;
 	return 0;
 }
 
@@ -234,12 +303,9 @@ int st_state_add_syscall(const struct st_syscall *syscall)
 	__u32 index;
 	int result;
 
-	if (syscall->number < 0 || syscall->number >= NR_syscalls)
-		return -ERANGE;
-	if (syscall->number == __NR_exit ||
-	    syscall->number == __NR_exit_group ||
-	    syscall->number == __NR_rt_sigreturn)
-		return -EOPNOTSUPP;
+	result = st_validate_syscall(syscall);
+	if (result)
+		return result;
 
 	spin_lock_irqsave(&st_config_lock, flags);
 	for (index = 0; index < st_state.config.syscall_count; index++) {
@@ -270,12 +336,9 @@ int st_state_remove_syscall(const struct st_syscall *syscall)
 	__u32 index;
 	int result;
 
-	if (syscall->number < 0 || syscall->number >= NR_syscalls)
-		return -ERANGE;
-	if (syscall->number == __NR_exit ||
-	    syscall->number == __NR_exit_group ||
-	    syscall->number == __NR_rt_sigreturn)
-		return -EOPNOTSUPP;
+	result = st_validate_syscall(syscall);
+	if (result)
+		return result;
 
 	spin_lock_irqsave(&st_config_lock, flags);
 	for (index = 0; index < st_state.config.syscall_count; index++) {
@@ -300,6 +363,95 @@ out:
 	spin_unlock_irqrestore(&st_config_lock, flags);
 	if (!result)
 		st_monitor_configuration_changed(false);
+	return result;
+}
+
+int st_state_configure(const struct st_configuration_update *update)
+{
+	struct st_state *candidate;
+	unsigned long irq_flags;
+	bool clear;
+	bool reset_stats;
+	bool reset_window;
+	__u32 index;
+	int result = 0;
+
+	if (update->flags & ~ST_CONFIGURE_VALID_FLAGS)
+		return -EINVAL;
+	if (memchr_inv(update->reserved, 0, sizeof(update->reserved)))
+		return -EINVAL;
+	if (update->program_count > ST_MAX_PROGRAMS ||
+	    update->uid_count > ST_MAX_UIDS ||
+	    update->syscall_count > ST_MAX_SYSCALLS)
+		return -E2BIG;
+	if (update->flags & ST_CONFIGURE_SET_MAX) {
+		if (update->max_per_second == 0 ||
+		    update->max_per_second > ST_MAX_LIMIT)
+			return -ERANGE;
+	} else if (update->max_per_second != 0) {
+		return -EINVAL;
+	}
+	if (update->flags & ST_CONFIGURE_SET_ENABLED) {
+		if (update->enabled > 1)
+			return -EINVAL;
+	} else if (update->enabled != 0) {
+		return -EINVAL;
+	}
+	candidate = kmalloc(sizeof(*candidate), GFP_KERNEL);
+	if (!candidate)
+		return -ENOMEM;
+
+	clear = update->flags & ST_CONFIGURE_CLEAR;
+	reset_stats = clear ||
+		      (update->flags & ST_CONFIGURE_RESET_STATS);
+	reset_window = clear ||
+		       ((update->flags & ST_CONFIGURE_SET_ENABLED) &&
+			!update->enabled);
+
+	spin_lock_irqsave(&st_config_lock, irq_flags);
+	*candidate = st_state;
+	if (clear) {
+		memset(candidate->programs, 0, sizeof(candidate->programs));
+		memset(candidate->uids, 0, sizeof(candidate->uids));
+		memset(candidate->syscalls, 0, sizeof(candidate->syscalls));
+		candidate->config.max_per_second = 1;
+		candidate->config.program_count = 0;
+		candidate->config.uid_count = 0;
+		candidate->config.syscall_count = 0;
+		candidate->config.enabled = false;
+	}
+
+	for (index = 0; index < update->program_count; index++) {
+		result = st_candidate_add_program(candidate,
+					  &update->programs[index]);
+		if (result)
+			goto out;
+	}
+	for (index = 0; index < update->uid_count; index++) {
+		result = st_candidate_add_uid(candidate, &update->uids[index]);
+		if (result)
+			goto out;
+	}
+	for (index = 0; index < update->syscall_count; index++) {
+		result = st_candidate_add_syscall(candidate,
+					  &update->syscalls[index]);
+		if (result)
+			goto out;
+	}
+
+	if (update->flags & ST_CONFIGURE_SET_MAX)
+		candidate->config.max_per_second = update->max_per_second;
+	if (update->flags & ST_CONFIGURE_SET_ENABLED)
+		candidate->config.enabled = update->enabled;
+	candidate->config.generation++;
+	if (candidate->config.generation == 0)
+		candidate->config.generation = 1;
+	st_state = *candidate;
+out:
+	spin_unlock_irqrestore(&st_config_lock, irq_flags);
+	if (!result)
+		st_monitor_configuration_applied(reset_window, reset_stats);
+	kfree(candidate);
 	return result;
 }
 

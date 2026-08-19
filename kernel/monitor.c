@@ -37,6 +37,18 @@ struct st_monitor {
 
 static struct st_monitor st_monitor;
 
+static void st_monitor_reset_stats_locked(__u64 now)
+{
+	__u32 current_blocked_threads =
+		st_monitor.stats.current_blocked_threads;
+
+	memset(&st_monitor.stats, 0, sizeof(st_monitor.stats));
+	st_monitor.stats.current_blocked_threads = current_blocked_threads;
+	st_monitor.stats.peak_blocked_threads = current_blocked_threads;
+	st_monitor.stats_start_ns = now;
+	st_monitor.stats_update_ns = now;
+}
+
 static void st_monitor_integrate_blocked_time(__u64 now)
 {
 	__u64 increment;
@@ -137,6 +149,20 @@ void st_monitor_configuration_changed(bool reset_window)
 		st_monitor.head = 0;
 		st_monitor.count = 0;
 	}
+	atomic64_inc(&st_monitor.wake_generation);
+	mutex_unlock(&st_monitor.lock);
+	wake_up_all(&st_monitor.wait_queue);
+}
+
+void st_monitor_configuration_applied(bool reset_window, bool reset_stats)
+{
+	mutex_lock(&st_monitor.lock);
+	if (reset_window) {
+		st_monitor.head = 0;
+		st_monitor.count = 0;
+	}
+	if (reset_stats)
+		st_monitor_reset_stats_locked(ktime_get_ns());
 	atomic64_inc(&st_monitor.wake_generation);
 	mutex_unlock(&st_monitor.lock);
 	wake_up_all(&st_monitor.wait_queue);
@@ -243,16 +269,7 @@ void st_monitor_get_stats(struct st_stats *stats)
 
 void st_monitor_reset_stats(void)
 {
-	__u32 current_blocked_threads;
-	__u64 now;
-
 	mutex_lock(&st_monitor.lock);
-	now = ktime_get_ns();
-	current_blocked_threads = st_monitor.stats.current_blocked_threads;
-	memset(&st_monitor.stats, 0, sizeof(st_monitor.stats));
-	st_monitor.stats.current_blocked_threads = current_blocked_threads;
-	st_monitor.stats.peak_blocked_threads = current_blocked_threads;
-	st_monitor.stats_start_ns = now;
-	st_monitor.stats_update_ns = now;
+	st_monitor_reset_stats_locked(ktime_get_ns());
 	mutex_unlock(&st_monitor.lock);
 }
