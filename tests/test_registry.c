@@ -213,6 +213,95 @@ static int test_basic_operations(int descriptor)
 	return 0;
 }
 
+static int test_atomic_configuration(int descriptor)
+{
+	struct st_program existing = { .name = "existing" };
+	struct st_configuration_update update;
+	struct st_config before;
+	struct st_config after;
+
+	memset(&update, 0, sizeof(update));
+	if (get_config(descriptor, &before))
+		return -1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, (void *)1, EFAULT,
+			 "configuration invalid pointer"))
+		return -1;
+
+	update.flags = ST_CONFIGURE_VALID_FLAGS << 1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, EINVAL,
+			 "configuration unknown flags"))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.reserved[0] = 1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, EINVAL,
+			 "configuration reserved field"))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.program_count = ST_MAX_PROGRAMS + 1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, E2BIG,
+			 "configuration excessive count"))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.max_per_second = 1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, EINVAL,
+			 "configuration inactive MAX"))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.flags = ST_CONFIGURE_SET_MAX;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, ERANGE,
+			 "configuration zero MAX"))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.program_count = 1;
+	if (expect_error(descriptor, ST_IOC_CONFIGURE, &update, EINVAL,
+			 "configuration invalid program"))
+		return -1;
+	if (get_config(descriptor, &after) ||
+	    after.generation != before.generation) {
+		fprintf(stderr, "failed configuration changed state\n");
+		return -1;
+	}
+
+	if (ioctl(descriptor, ST_IOC_ADD_PROGRAM, &existing) == -1 ||
+	    get_config(descriptor, &before))
+		return -1;
+	memset(&update, 0, sizeof(update));
+	update.flags = ST_CONFIGURE_SET_MAX | ST_CONFIGURE_SET_ENABLED |
+		       ST_CONFIGURE_RESET_STATS;
+	update.max_per_second = 7;
+	update.enabled = 1;
+	update.program_count = 2;
+	update.programs[0] = existing;
+	strcpy(update.programs[1].name, "batch_added");
+	update.uid_count = 1;
+	update.uids[0].value = 1000;
+	update.syscall_count = 1;
+	update.syscalls[0].number = SYS_getpid;
+	if (ioctl(descriptor, ST_IOC_CONFIGURE, &update) == -1) {
+		perror("atomic configuration");
+		return -1;
+	}
+	if (get_config(descriptor, &after) ||
+	    after.generation != before.generation + 1 || !after.enabled ||
+	    after.max_per_second != 7 || after.program_count != 2 ||
+	    after.uid_count != 1 || after.syscall_count != 1) {
+		fprintf(stderr, "atomic configuration result is inconsistent\n");
+		return -1;
+	}
+
+	memset(&update, 0, sizeof(update));
+	update.flags = ST_CONFIGURE_CLEAR;
+	if (ioctl(descriptor, ST_IOC_CONFIGURE, &update) == -1 ||
+	    get_config(descriptor, &after) || after.enabled ||
+	    after.max_per_second != 1 || after.program_count ||
+	    after.uid_count || after.syscall_count) {
+		fprintf(stderr, "clear configuration failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int test_capacities(int descriptor)
 {
 	struct st_program program;
@@ -407,6 +496,7 @@ int main(void)
 
 	if (test_validation(descriptor) ||
 	    test_basic_operations(descriptor) ||
+	    test_atomic_configuration(descriptor) ||
 	    test_capacities(descriptor) ||
 	    test_concurrency() || get_config(descriptor, &config) ||
 	    config.program_count || config.uid_count || config.syscall_count) {

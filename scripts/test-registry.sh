@@ -58,7 +58,7 @@ wait "$writer_pid"
 configuration=$("$control_path" list)
 printf '%s\n' "$configuration" | grep -q '  cli_probe$'
 printf '%s\n' "$configuration" | grep -q '  1000$'
-printf '%s\n' "$configuration" | grep -q '  39$'
+printf '%s\n' "$configuration" | grep -q '  getpid (39)$'
 "$control_path" remove-program cli_probe
 "$control_path" remove-uid 1000
 "$control_path" remove-syscall 39

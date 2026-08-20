@@ -35,18 +35,14 @@ printf '[load]\n'
 insmod "$module_path"
 
 printf '[configure]\n'
-"$control" add-program test_throttle
-"$control" add-syscall 39
-"$control" set-max 5
-"$control" reset-stats
-"$control" enable
-"$control" list
+"$control" configure --clear --program test_throttle --syscall getpid \
+	--max 5 --reset-stats --enable
 
 printf '[six matching getpid calls]\n'
 "$workload" burst 6
 
 printf '[statistics]\n'
-"$control" stats
+"$control" show
 
 printf '[safe unload]\n'
 unload_module
