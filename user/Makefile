@@ -6,8 +6,9 @@ CFLAGS ?= -O2 -Wall -Wextra -Wpedantic -std=c11
 
 all: throttle_ctl
 
-throttle_ctl: throttle_ctl.c ../include/syscall_throttle.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ throttle_ctl.c
+throttle_ctl: throttle_ctl.c syscall_names.c syscall_names.h \
+		../include/syscall_throttle.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ throttle_ctl.c syscall_names.c
 
 clean:
 	$(RM) throttle_ctl
