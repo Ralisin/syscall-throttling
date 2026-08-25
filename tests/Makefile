@@ -4,7 +4,15 @@ CFLAGS ?= -O2 -Wall -Wextra -Wpedantic -std=c11
 
 .PHONY: all clean
 
-all: test_device test_hook test_registry test_throttle test_stats test_stress
+SYSCALL_EXAMPLES := \
+	syscalls/getpid/st_getpid \
+	syscalls/getuid/st_getuid \
+	syscalls/write/st_write \
+	syscalls/openat/st_openat \
+	syscalls/read/st_read
+
+all: test_device test_hook test_registry test_throttle test_stats test_stress \
+	$(SYSCALL_EXAMPLES)
 
 test_device: test_device.c ../include/syscall_throttle.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ test_device.c
@@ -24,5 +32,21 @@ test_stats: test_stats.c ../include/syscall_throttle.h
 test_stress: test_stress.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread -o $@ test_stress.c
 
+syscalls/getpid/st_getpid: syscalls/getpid/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+syscalls/getuid/st_getuid: syscalls/getuid/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+syscalls/write/st_write: syscalls/write/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+syscalls/openat/st_openat: syscalls/openat/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+syscalls/read/st_read: syscalls/read/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
 clean:
-	$(RM) test_device test_hook test_registry test_throttle test_stats test_stress
+	$(RM) test_device test_hook test_registry test_throttle test_stats test_stress \
+		$(SYSCALL_EXAMPLES)
