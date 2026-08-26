@@ -41,6 +41,10 @@ The `read` example intentionally combines two independent delays: the monitor
 may defer admission, and the admitted syscall may then wait for pipe data. It
 demonstrates that the monitor also handles naturally blocking syscalls.
 
+The `sensitive/` group extends the matrix with confined examples for
+`unlinkat`, `mprotect`, `futex`, `connect`, `kill`, and `execve`. See
+`sensitive/README.md` for their safety boundaries and execution instructions.
+
 When finished:
 
 ```sh

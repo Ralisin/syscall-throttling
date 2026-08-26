@@ -32,6 +32,7 @@ rmmod syscall_throttle
 "$project_directory/scripts/test-registry.sh"
 "$project_directory/scripts/test-control.sh"
 "$project_directory/scripts/test-syscall-examples.sh"
+"$project_directory/scripts/test-sensitive-syscalls.sh"
 "$project_directory/scripts/test-hook.sh"
 "$project_directory/scripts/test-throttle.sh"
 "$project_directory/scripts/test-stats.sh"
