@@ -1,39 +1,152 @@
-# Syscall throttling
+# Syscall Throttling LKM
 
-Progetto per il corso di Sistemi Operativi Avanzati.
+Questo progetto implementa un modulo kernel Linux per limitare la frequenza di
+alcune system call su x86-64. Le chiamate da controllare vengono scelte in base
+al numero della syscall e al nome del programma oppure all'EUID del processo.
+Quando il limite e' stato raggiunto, il processo viene messo in attesa senza
+fare busy waiting.
 
-L'obiettivo e' realizzare un modulo Linux che intercetti alcune system call e
-ne limiti il numero di esecuzioni al secondo. La configurazione dovra' essere
-modificabile da user space tramite un device driver.
+La configurazione passa attraverso il device `/dev/syscall_throttle`. Il
+programma `throttle_ctl` permette di aggiungere o rimuovere programmi, UID e
+syscall, attivare il monitor e leggere le statistiche.
 
-Al momento sono presenti il device, la configurazione minima di `MAX` e stato
-del monitor, l'utility user space e un primo test del device. Mancano ancora i
-registri e l'intercettazione vera e propria.
+## Ambiente usato
 
-La prima prova di intercettazione usa una kprobe sul dispatcher
-`x64_sys_call`. Per ora il wrapper richiama sempre la funzione originale e non
-applica ancora nessun limite.
+Il progetto e' stato compilato e provato nella seguente VM:
 
-## Ambiente
+- Ubuntu 24.04.4 LTS x86-64;
+- kernel `7.0.0-29-generic`;
+- GCC 13.3.0;
+- GNU Make 4.3;
+- Secure Boot disabilitato.
 
-Lo sviluppo viene fatto su una VM Ubuntu 24.04 x86-64. Prima di compilare il
-modulo bisogna controllare che gli header corrispondano al kernel restituito da
-`uname -r`.
+L'intercettazione dipende dal dispatcher `x64_sys_call`, quindi non considero
+il modulo portabile senza verifiche su versioni o architetture diverse.
+
+## Come funziona
+
+Il modulo registra una kprobe sul dispatcher comune delle syscall. Il
+pre-handler controlla soltanto se la chiamata interessa il monitor e, se
+necessario, sposta l'esecuzione su un wrapper del modulo. Il pre-handler non si
+blocca e non alloca memoria.
+
+Il wrapper esegue il controllo sul limite. Se c'e' posto nella finestra mobile
+di un secondo, richiama subito il dispatcher originale. Altrimenti dorme su una
+wait queue fino alla scadenza del timestamp piu' vecchio o fino a una modifica
+della configurazione.
+
+`MAX` e' un limite globale: viene condiviso da tutte le syscall e da tutte le
+identita' registrate. Una chiamata viene selezionata quando la syscall e'
+registrata e corrisponde almeno il nome del programma oppure l'EUID.
+
+Durante una riconfigurazione viene incrementata una generazione. In questo
+modo i processi gia' in attesa capiscono che devono rileggere lo stato invece di
+continuare ad aspettare usando valori vecchi.
+
+Per lo scaricamento del modulo vengono prima rimosse le nuove deviazioni, poi
+vengono svegliati i processi in attesa e infine si aspetta che tutti i wrapper
+gia' entrati siano terminati. Una syscall originale che si blocca naturalmente,
+come `read`, deve comunque terminare prima che l'unload possa completarsi.
 
 ## Compilazione
+
+Servono compilatore e header corrispondenti al kernel in esecuzione:
+
+```sh
+sudo apt update
+sudo apt install build-essential linux-headers-$(uname -r)
+```
+
+Dalla directory principale:
 
 ```sh
 ./scripts/check-environment.sh
 make
 ```
 
-## Prima prova
+Caricamento del modulo:
 
 ```sh
 sudo insmod kernel/syscall_throttle.ko
-./user/throttle_ctl status
-sudo ./user/throttle_ctl set-max 10
-sudo ./user/throttle_ctl enable
+```
+
+## Configurazione
+
+Le modifiche alla configurazione richiedono EUID 0. La lettura dello stato e
+delle statistiche e' invece disponibile anche agli utenti normali.
+
+Esempio con `getpid`, limite globale di cinque chiamate al secondo e selezione
+del programma `test_throttle`:
+
+```sh
+sudo ./user/throttle_ctl configure --clear \
+    --program test_throttle \
+    --syscall getpid \
+    --max 5 \
+    --reset-stats \
+    --enable
+```
+
+Per controllare configurazione e statistiche:
+
+```sh
+./user/throttle_ctl show
+```
+
+I comandi singoli (`add-program`, `add-uid`, `add-syscall`, `set-max`,
+`enable` e `disable`) restano disponibili. L'elenco completo si ottiene con:
+
+```sh
+./user/throttle_ctl --help
+```
+
+Prima di rimuovere il modulo conviene disabilitare il monitor:
+
+```sh
 sudo ./user/throttle_ctl disable
 sudo rmmod syscall_throttle
 ```
+
+## Test
+
+La demo piu' breve configura il modulo, esegue sei `getpid` con `MAX=5` e
+mostra il ritardo e le statistiche:
+
+```sh
+sudo ./scripts/demo.sh
+```
+
+Dopo la compilazione si puo' eseguire l'intera suite con:
+
+```sh
+sudo ./scripts/test-all.sh
+```
+
+I test includono configurazioni non valide, permessi, registri concorrenti,
+variazioni di `MAX` mentre il monitor e' attivo, segnali, statistiche, carico
+concorrente e rimozione del modulo. In `tests/syscalls/` ci sono inoltre piccoli
+programmi separati per provare syscall bloccanti e non bloccanti.
+
+## Limiti e scelte fatte
+
+- il nome del programma viene letto da `current->comm`: sono disponibili 15
+  caratteri e thread diversi possono avere nomi diversi;
+- la finestra temporale e' mobile e usa il clock monotono;
+- non e' garantito un ordine FIFO tra i processi in attesa;
+- un segnale puo' interrompere l'attesa;
+- `exit`, `exit_group` e `rt_sigreturn` non vengono accettate, perche' non
+  ritornano normalmente al wrapper;
+- registri e limite hanno dimensione massima fissa per mantenere limitato il
+  lavoro svolto dal pre-handler.
+
+## Struttura
+
+```text
+kernel/   sorgenti del modulo
+user/     utility throttle_ctl
+include/  interfaccia ioctl condivisa
+tests/    programmi usati dai test
+scripts/  demo e test di integrazione
+```
+
+Il codice e' distribuito secondo la licenza GPL-2.0-only.
