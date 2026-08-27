@@ -30,6 +30,7 @@ inherit registrations or statistics from a previous run.
 | `write` | `write` | 3 | Seven one-byte writes to `/dev/null` |
 | `openat` | `openat` | 2 | Five open/close cycles on `/dev/null` |
 | `read` | `read` | 2 | Five pipe reads with a delayed writer |
+| `mixed` | `write`, `fsync`, `ftruncate`, `unlinkat` | 4 | One temporary-file transaction |
 
 Each workload accepts the number of calls as its optional first argument. The
 examples invoke `syscall(2)` directly so the intended syscall is unambiguous.
@@ -40,6 +41,12 @@ deterministic than `getpid` or `getuid`.
 The `read` example intentionally combines two independent delays: the monitor
 may defer admission, and the admitted syscall may then wait for pipe data. It
 demonstrates that the monitor also handles naturally blocking syscalls.
+
+The `mixed` example is the aggregate-limit demonstration. With three rounds it
+issues three calls each to `write`, `fsync`, and `ftruncate`, followed by one
+`unlinkat`. No individual syscall reaches the default `MAX=4`, but their ten
+combined invocations share the same global window and therefore take about two
+seconds.
 
 The `sensitive/` group extends the matrix with confined examples for
 `unlinkat`, `mprotect`, `futex`, `connect`, `kill`, and `execve`. See

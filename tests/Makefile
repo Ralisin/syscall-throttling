@@ -10,6 +10,7 @@ SYSCALL_EXAMPLES := \
 	syscalls/write/st_write \
 	syscalls/openat/st_openat \
 	syscalls/read/st_read \
+	syscalls/mixed/st_mixed \
 	syscalls/sensitive/unlinkat/st_unlinkat \
 	syscalls/sensitive/mprotect/st_mprotect \
 	syscalls/sensitive/futex/st_futex \
@@ -51,6 +52,9 @@ syscalls/openat/st_openat: syscalls/openat/workload.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
 
 syscalls/read/st_read: syscalls/read/workload.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
+
+syscalls/mixed/st_mixed: syscalls/mixed/workload.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
 
 syscalls/sensitive/unlinkat/st_unlinkat: \

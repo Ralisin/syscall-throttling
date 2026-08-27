@@ -48,6 +48,7 @@ run_example getuid st_getuid
 run_example write st_write
 run_example openat st_openat
 run_example read st_read
+run_example mixed st_mixed
 
 unload_module
 trap - EXIT INT TERM
