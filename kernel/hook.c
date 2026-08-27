@@ -15,8 +15,7 @@
 
 #include "internal.h"
 
-typedef long (*st_dispatch_function)(const struct pt_regs *registers,
-				     unsigned int syscall_number);
+typedef long (*st_dispatch_function)(const struct pt_regs *registers, unsigned int syscall_number);
 
 struct st_dispatch_hook {
 	const char *symbol;
@@ -30,13 +29,12 @@ struct st_dispatch_hook {
 };
 
 /*
- * Counters are atomic. A release/acquire pair on registered publishes original
- * before a pre-handler may redirect; unregister_kprobe() excludes handlers
- * before registered is cleared. The drain queue observes active_calls.
+ * registered viene pubblicato solo dopo aver salvato il dispatcher originale.
+ * active_calls serve invece durante l'unload: il modulo non puo' essere
+ * rimosso finche' esiste ancora un wrapper che usa il suo codice.
  */
 
-static long st_dispatch_wrapper(const struct pt_regs *registers,
-				unsigned int syscall_number);
+static long st_dispatch_wrapper(const struct pt_regs *registers, unsigned int syscall_number);
 
 static struct st_dispatch_hook st_dispatch = {
 	.symbol = "x64_sys_call",
@@ -48,8 +46,7 @@ static struct st_dispatch_hook st_dispatch = {
 
 static DECLARE_WAIT_QUEUE_HEAD(st_hook_drain_queue);
 
-static bool st_should_redirect(const struct pt_regs *registers)
-{
+static bool st_should_redirect(const struct pt_regs *registers) {
 	unsigned int syscall_number = (unsigned int)registers->si;
 	__u32 effective_uid;
 
@@ -57,9 +54,7 @@ static bool st_should_redirect(const struct pt_regs *registers)
 	return st_state_matches(syscall_number, current->comm, effective_uid);
 }
 
-static int st_dispatch_pre_handler(struct kprobe *probe,
-				   struct pt_regs *registers)
-{
+static int st_dispatch_pre_handler(struct kprobe *probe, struct pt_regs *registers) {
 	unsigned long return_address;
 
 	(void)probe;
@@ -75,23 +70,18 @@ static int st_dispatch_pre_handler(struct kprobe *probe,
 		return 0;
 
 	atomic_inc(&st_dispatch.active_calls);
-	instruction_pointer_set(registers,
-				(unsigned long)st_dispatch_wrapper);
+	instruction_pointer_set(registers, (unsigned long)st_dispatch_wrapper);
+
 	return 1;
 }
 
-static void st_dispatch_post_handler(struct kprobe *probe,
-				     struct pt_regs *registers,
-				     unsigned long flags)
-{
+static void st_dispatch_post_handler(struct kprobe *probe, struct pt_regs *registers, unsigned long flags) {
 	(void)probe;
 	(void)registers;
 	(void)flags;
 }
 
-static long st_dispatch_wrapper(const struct pt_regs *registers,
-				unsigned int syscall_number)
-{
+static long st_dispatch_wrapper(const struct pt_regs *registers, unsigned int syscall_number) {
 	long result;
 
 	atomic64_inc(&st_dispatch.total_hits);
@@ -110,34 +100,26 @@ static long st_dispatch_wrapper(const struct pt_regs *registers,
 	return result;
 }
 
-static int st_counter_get(char *buffer,
-			  const struct kernel_param *parameter)
-{
+static int st_counter_get(char *buffer, const struct kernel_param *parameter) {
 	const atomic64_t *counter = parameter->arg;
 
-	return scnprintf(buffer, PAGE_SIZE, "%lld\n",
-			 (long long)atomic64_read(counter));
+	return scnprintf(buffer, PAGE_SIZE, "%lld\n", (long long)atomic64_read(counter));
 }
 
 static const struct kernel_param_ops st_counter_operations = {
 	.get = st_counter_get,
 };
 
-module_param_cb(dispatcher_hook_hits, &st_counter_operations,
-		&st_dispatch.total_hits, 0444);
-MODULE_PARM_DESC(dispatcher_hook_hits,
-		 "Number of syscall dispatches redirected by kprobe");
+module_param_cb(dispatcher_hook_hits, &st_counter_operations, &st_dispatch.total_hits, 0444);
+MODULE_PARM_DESC(dispatcher_hook_hits, "Number of syscall dispatches redirected by kprobe");
 
-module_param_cb(getpid_hook_hits, &st_counter_operations,
-		&st_dispatch.getpid_hits, 0444);
+module_param_cb(getpid_hook_hits, &st_counter_operations, &st_dispatch.getpid_hits, 0444);
 MODULE_PARM_DESC(getpid_hook_hits, "Number of redirected getpid calls");
 
-module_param_cb(read_hook_hits, &st_counter_operations,
-		&st_dispatch.read_hits, 0444);
+module_param_cb(read_hook_hits, &st_counter_operations, &st_dispatch.read_hits, 0444);
 MODULE_PARM_DESC(read_hook_hits, "Number of redirected read calls");
 
-int st_hooks_register(void)
-{
+int st_hooks_register(void) {
 	int result;
 
 	st_dispatch.probe.symbol_name = st_dispatch.symbol;
@@ -146,20 +128,18 @@ int st_hooks_register(void)
 
 	result = register_kprobe(&st_dispatch.probe);
 	if (result) {
-		pr_err("unable to register kprobe for %s: %d\n",
-		       st_dispatch.symbol, result);
+		pr_err("impossibile registrare la kprobe su %s: %d\n", st_dispatch.symbol, result);
 		return result;
 	}
 
-	st_dispatch.original =
-		(st_dispatch_function)st_dispatch.probe.addr;
+	st_dispatch.original = (st_dispatch_function)st_dispatch.probe.addr;
 	smp_store_release(&st_dispatch.registered, true);
-	pr_info("syscall dispatcher redirection enabled\n");
+	pr_info("deviazione del dispatcher attivata\n");
+
 	return 0;
 }
 
-void st_hooks_unregister(void)
-{
+void st_hooks_unregister(void) {
 	if (!st_dispatch.registered)
 		return;
 
@@ -167,7 +147,6 @@ void st_hooks_unregister(void)
 	st_dispatch.registered = false;
 	st_monitor_stop();
 
-	wait_event(st_hook_drain_queue,
-		   atomic_read(&st_dispatch.active_calls) == 0);
-	pr_info("syscall dispatcher redirection disabled\n");
+	wait_event(st_hook_drain_queue, atomic_read(&st_dispatch.active_calls) == 0);
+	pr_info("deviazione del dispatcher disattivata\n");
 }

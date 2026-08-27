@@ -71,10 +71,12 @@ struct st_stats {
 #define ST_CONFIGURE_SET_MAX     (1U << 1)
 #define ST_CONFIGURE_SET_ENABLED (1U << 2)
 #define ST_CONFIGURE_RESET_STATS (1U << 3)
-#define ST_CONFIGURE_VALID_FLAGS (ST_CONFIGURE_CLEAR | \
-				  ST_CONFIGURE_SET_MAX | \
-				  ST_CONFIGURE_SET_ENABLED | \
-				  ST_CONFIGURE_RESET_STATS)
+#define ST_CONFIGURE_VALID_FLAGS ( \
+	ST_CONFIGURE_CLEAR | \
+	ST_CONFIGURE_SET_MAX | \
+	ST_CONFIGURE_SET_ENABLED | \
+	ST_CONFIGURE_RESET_STATS \
+)
 
 struct st_configuration_update {
 	__u32 flags;
@@ -106,6 +108,5 @@ struct st_configuration_update {
 #define ST_IOC_GET_SYSCALL       _IOWR(ST_IOC_MAGIC, 0x0d, struct st_syscall_entry)
 #define ST_IOC_GET_STATS         _IOR(ST_IOC_MAGIC, 0x0e, struct st_stats)
 #define ST_IOC_RESET_STATS       _IO(ST_IOC_MAGIC, 0x0f)
-#define ST_IOC_CONFIGURE         _IOW(ST_IOC_MAGIC, 0x10, \
-				      struct st_configuration_update)
+#define ST_IOC_CONFIGURE         _IOW(ST_IOC_MAGIC, 0x10, struct st_configuration_update)
 #endif

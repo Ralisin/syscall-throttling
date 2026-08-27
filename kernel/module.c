@@ -4,8 +4,7 @@
 
 #include "internal.h"
 
-static int __init st_module_init(void)
-{
+static int __init st_module_init(void) {
 	int result;
 
 	st_state_initialize();
@@ -29,8 +28,7 @@ static int __init st_module_init(void)
 	return 0;
 }
 
-static void __exit st_module_exit(void)
-{
+static void __exit st_module_exit(void) {
 	st_hooks_unregister();
 	st_device_unregister();
 	st_monitor_destroy();

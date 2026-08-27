@@ -9,8 +9,7 @@
 
 #include "internal.h"
 
-static bool st_is_configuration_command(unsigned int command)
-{
+static bool st_is_configuration_command(unsigned int command) {
 	switch (command) {
 	case ST_IOC_ADD_PROGRAM:
 	case ST_IOC_REMOVE_PROGRAM:
@@ -29,9 +28,7 @@ static bool st_is_configuration_command(unsigned int command)
 	}
 }
 
-static long st_device_ioctl(struct file *file, unsigned int command,
-			    unsigned long argument)
-{
+static long st_device_ioctl(struct file *file, unsigned int command, unsigned long argument) {
 	struct st_config config;
 	struct st_program program;
 	struct st_program_entry program_entry;
@@ -164,15 +161,13 @@ static long st_device_ioctl(struct file *file, unsigned int command,
 	}
 }
 
-static int st_device_open(struct inode *inode, struct file *file)
-{
+static int st_device_open(struct inode *inode, struct file *file) {
 	(void)inode;
 	(void)file;
 	return 0;
 }
 
-static int st_device_release(struct inode *inode, struct file *file)
-{
+static int st_device_release(struct inode *inode, struct file *file) {
 	(void)inode;
 	(void)file;
 	return 0;
@@ -195,12 +190,10 @@ static struct miscdevice st_device = {
 	.mode = 0666,
 };
 
-int st_device_register(void)
-{
+int st_device_register(void) {
 	return misc_register(&st_device);
 }
 
-void st_device_unregister(void)
-{
+void st_device_unregister(void) {
 	misc_deregister(&st_device);
 }

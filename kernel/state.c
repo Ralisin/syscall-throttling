@@ -18,19 +18,16 @@ struct st_state {
 };
 
 static DEFINE_SPINLOCK(st_config_lock);
-/* st_config_lock protects every field in st_state. */
+/* Tutto lo stato di configurazione viene letto e scritto con questo lock. */
 static struct st_state st_state;
 
-static void st_advance_generation(void)
-{
+static void st_advance_generation(void) {
 	st_state.config.generation++;
 	if (st_state.config.generation == 0)
 		st_state.config.generation = 1;
 }
 
-static int st_normalize_program(const struct st_program *program,
-				struct st_program *normalized)
-{
+static int st_normalize_program(const struct st_program *program, struct st_program *normalized) {
 	size_t length = strnlen(program->name, ST_PROGRAM_NAME_LEN);
 
 	if (length == 0)
@@ -43,8 +40,7 @@ static int st_normalize_program(const struct st_program *program,
 	return 0;
 }
 
-static int st_validate_syscall(const struct st_syscall *syscall)
-{
+static int st_validate_syscall(const struct st_syscall *syscall) {
 	if (syscall->number < 0 || syscall->number >= NR_syscalls)
 		return -ERANGE;
 	if (syscall->number == __NR_exit ||
@@ -54,9 +50,7 @@ static int st_validate_syscall(const struct st_syscall *syscall)
 	return 0;
 }
 
-static int st_candidate_add_program(struct st_state *candidate,
-				    const struct st_program *program)
-{
+static int st_candidate_add_program(struct st_state *candidate, const struct st_program *program) {
 	struct st_program normalized;
 	__u32 index;
 	int result;
@@ -75,9 +69,7 @@ static int st_candidate_add_program(struct st_state *candidate,
 	return 0;
 }
 
-static int st_candidate_add_uid(struct st_state *candidate,
-				const struct st_uid *uid)
-{
+static int st_candidate_add_uid(struct st_state *candidate, const struct st_uid *uid) {
 	__u32 index;
 
 	if (!uid_valid(make_kuid(&init_user_ns, uid->value)))
@@ -92,9 +84,7 @@ static int st_candidate_add_uid(struct st_state *candidate,
 	return 0;
 }
 
-static int st_candidate_add_syscall(struct st_state *candidate,
-				    const struct st_syscall *syscall)
-{
+static int st_candidate_add_syscall(struct st_state *candidate, const struct st_syscall *syscall) {
 	__u32 index;
 	int result;
 
@@ -111,8 +101,7 @@ static int st_candidate_add_syscall(struct st_state *candidate,
 	return 0;
 }
 
-void st_state_initialize(void)
-{
+void st_state_initialize(void) {
 	unsigned long flags;
 
 	spin_lock_irqsave(&st_config_lock, flags);
@@ -122,8 +111,7 @@ void st_state_initialize(void)
 	spin_unlock_irqrestore(&st_config_lock, flags);
 }
 
-void st_state_get_config(struct st_config *config)
-{
+void st_state_get_config(struct st_config *config) {
 	unsigned long flags;
 
 	spin_lock_irqsave(&st_config_lock, flags);
@@ -131,8 +119,7 @@ void st_state_get_config(struct st_config *config)
 	spin_unlock_irqrestore(&st_config_lock, flags);
 }
 
-int st_state_set_max(__u32 max_per_second)
-{
+int st_state_set_max(__u32 max_per_second) {
 	unsigned long flags;
 
 	if (max_per_second == 0 || max_per_second > ST_MAX_LIMIT)
@@ -147,8 +134,7 @@ int st_state_set_max(__u32 max_per_second)
 	return 0;
 }
 
-void st_state_set_enabled(bool enabled)
-{
+void st_state_set_enabled(bool enabled) {
 	unsigned long flags;
 
 	spin_lock_irqsave(&st_config_lock, flags);
@@ -158,8 +144,7 @@ void st_state_set_enabled(bool enabled)
 	st_monitor_configuration_changed(!enabled);
 }
 
-int st_state_add_program(const struct st_program *program)
-{
+int st_state_add_program(const struct st_program *program) {
 	struct st_program normalized;
 	unsigned long flags;
 	__u32 index;
@@ -193,8 +178,7 @@ out:
 	return result;
 }
 
-int st_state_remove_program(const struct st_program *program)
-{
+int st_state_remove_program(const struct st_program *program) {
 	struct st_program normalized;
 	unsigned long flags;
 	__u32 index;
@@ -231,8 +215,7 @@ out:
 	return result;
 }
 
-int st_state_add_uid(const struct st_uid *uid)
-{
+int st_state_add_uid(const struct st_uid *uid) {
 	unsigned long flags;
 	__u32 index;
 	int result;
@@ -263,8 +246,7 @@ out:
 	return result;
 }
 
-int st_state_remove_uid(const struct st_uid *uid)
-{
+int st_state_remove_uid(const struct st_uid *uid) {
 	unsigned long flags;
 	__u32 index;
 	int result;
@@ -297,8 +279,7 @@ out:
 	return result;
 }
 
-int st_state_add_syscall(const struct st_syscall *syscall)
-{
+int st_state_add_syscall(const struct st_syscall *syscall) {
 	unsigned long flags;
 	__u32 index;
 	int result;
@@ -330,8 +311,7 @@ out:
 	return result;
 }
 
-int st_state_remove_syscall(const struct st_syscall *syscall)
-{
+int st_state_remove_syscall(const struct st_syscall *syscall) {
 	unsigned long flags;
 	__u32 index;
 	int result;
@@ -366,8 +346,7 @@ out:
 	return result;
 }
 
-int st_state_configure(const struct st_configuration_update *update)
-{
+int st_state_configure(const struct st_configuration_update *update) {
 	struct st_state *candidate;
 	unsigned long irq_flags;
 	bool clear;
@@ -455,8 +434,7 @@ out:
 	return result;
 }
 
-int st_state_get_program(struct st_program_entry *entry)
-{
+int st_state_get_program(struct st_program_entry *entry) {
 	unsigned long flags;
 	int result;
 
@@ -475,8 +453,7 @@ int st_state_get_program(struct st_program_entry *entry)
 	return result;
 }
 
-int st_state_get_uid(struct st_uid_entry *entry)
-{
+int st_state_get_uid(struct st_uid_entry *entry) {
 	unsigned long flags;
 	int result;
 
@@ -493,8 +470,7 @@ int st_state_get_uid(struct st_uid_entry *entry)
 	return result;
 }
 
-int st_state_get_syscall(struct st_syscall_entry *entry)
-{
+int st_state_get_syscall(struct st_syscall_entry *entry) {
 	unsigned long flags;
 	int result;
 
@@ -511,9 +487,7 @@ int st_state_get_syscall(struct st_syscall_entry *entry)
 	return result;
 }
 
-bool st_state_matches(__u32 syscall_number, const char *program_name,
-		      __u32 effective_uid)
-{
+bool st_state_matches(__u32 syscall_number, const char *program_name, __u32 effective_uid) {
 	unsigned long flags;
 	bool identity_matches = false;
 	bool syscall_matches = false;
@@ -551,9 +525,7 @@ out:
 	return syscall_matches && identity_matches;
 }
 
-bool st_state_get_admission(__u32 syscall_number, const char *program_name,
-			    __u32 effective_uid, __u32 *max_per_second)
-{
+bool st_state_get_admission(__u32 syscall_number, const char *program_name, __u32 effective_uid, __u32 *max_per_second) {
 	unsigned long flags;
 	bool identity_matches = false;
 	bool syscall_matches = false;

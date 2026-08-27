@@ -30,17 +30,15 @@ struct st_monitor {
 };
 
 /*
- * lock protects the timestamp ring and stopping transitions. wake_generation
- * is atomic because wait conditions read it without lock; stopping is read
- * locklessly only with READ_ONCE after being published with WRITE_ONCE.
+ * lock protegge sia l'anello dei timestamp sia le statistiche. La condizione
+ * della wait queue legge generation e stopping senza prendere il mutex, per
+ * questo vengono usati un contatore atomico e READ_ONCE/WRITE_ONCE.
  */
 
 static struct st_monitor st_monitor;
 
-static void st_monitor_reset_stats_locked(__u64 now)
-{
-	__u32 current_blocked_threads =
-		st_monitor.stats.current_blocked_threads;
+static void st_monitor_reset_stats_locked(__u64 now) {
+	__u32 current_blocked_threads = st_monitor.stats.current_blocked_threads;
 
 	memset(&st_monitor.stats, 0, sizeof(st_monitor.stats));
 	st_monitor.stats.current_blocked_threads = current_blocked_threads;
@@ -49,37 +47,31 @@ static void st_monitor_reset_stats_locked(__u64 now)
 	st_monitor.stats_update_ns = now;
 }
 
-static void st_monitor_integrate_blocked_time(__u64 now)
-{
+static void st_monitor_integrate_blocked_time(__u64 now) {
 	__u64 increment;
 	__u64 total;
 	__u64 duration = now - st_monitor.stats_update_ns;
 
-	if (check_mul_overflow(duration,
-			       (__u64)st_monitor.stats.current_blocked_threads,
-			       &increment) ||
-	    check_add_overflow(st_monitor.stats.blocked_thread_time_ns,
-			       increment, &total))
+	if (check_mul_overflow(
+			duration,
+			(__u64)st_monitor.stats.current_blocked_threads, &increment) || check_add_overflow(st_monitor.stats.blocked_thread_time_ns,
+			increment,
+			&total
+		))
 		st_monitor.stats.blocked_thread_time_ns = U64_MAX;
 	else
 		st_monitor.stats.blocked_thread_time_ns = total;
 	st_monitor.stats_update_ns = now;
 }
 
-static void st_monitor_wait_started(__u64 now)
-{
+static void st_monitor_wait_started(__u64 now) {
 	st_monitor_integrate_blocked_time(now);
 	st_monitor.stats.current_blocked_threads++;
-	if (st_monitor.stats.current_blocked_threads >
-	    st_monitor.stats.peak_blocked_threads)
-		st_monitor.stats.peak_blocked_threads =
-			st_monitor.stats.current_blocked_threads;
+	if (st_monitor.stats.current_blocked_threads > st_monitor.stats.peak_blocked_threads)
+		st_monitor.stats.peak_blocked_threads = st_monitor.stats.current_blocked_threads;
 }
 
-static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns,
-				     const char *program_name,
-				     __u32 effective_uid, bool executed)
-{
+static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns, const char *program_name, __u32 effective_uid, bool executed) {
 	__u64 measured_start;
 	__u64 delay;
 
@@ -97,13 +89,11 @@ static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns,
 	if (delay > st_monitor.stats.peak_delay_ns) {
 		st_monitor.stats.peak_delay_ns = delay;
 		st_monitor.stats.peak_uid = effective_uid;
-		memcpy(st_monitor.stats.peak_program, program_name,
-		       ST_PROGRAM_NAME_LEN);
+		memcpy(st_monitor.stats.peak_program, program_name, ST_PROGRAM_NAME_LEN);
 	}
 }
 
-static void st_monitor_prune(__u64 now)
-{
+static void st_monitor_prune(__u64 now) {
 	while (st_monitor.count > 0) {
 		__u64 oldest = st_monitor.timestamps[st_monitor.head];
 
@@ -114,14 +104,12 @@ static void st_monitor_prune(__u64 now)
 	}
 }
 
-int st_monitor_initialize(void)
-{
+int st_monitor_initialize(void) {
 	__u64 now;
 
 	mutex_init(&st_monitor.lock);
 	init_waitqueue_head(&st_monitor.wait_queue);
-	st_monitor.timestamps = kvcalloc(ST_MAX_LIMIT,
-					 sizeof(*st_monitor.timestamps), GFP_KERNEL);
+	st_monitor.timestamps = kvcalloc(ST_MAX_LIMIT, sizeof(*st_monitor.timestamps), GFP_KERNEL);
 	if (!st_monitor.timestamps)
 		return -ENOMEM;
 
@@ -136,14 +124,12 @@ int st_monitor_initialize(void)
 	return 0;
 }
 
-void st_monitor_destroy(void)
-{
+void st_monitor_destroy(void) {
 	kvfree(st_monitor.timestamps);
 	st_monitor.timestamps = NULL;
 }
 
-void st_monitor_configuration_changed(bool reset_window)
-{
+void st_monitor_configuration_changed(bool reset_window) {
 	mutex_lock(&st_monitor.lock);
 	if (reset_window) {
 		st_monitor.head = 0;
@@ -154,8 +140,7 @@ void st_monitor_configuration_changed(bool reset_window)
 	wake_up_all(&st_monitor.wait_queue);
 }
 
-void st_monitor_configuration_applied(bool reset_window, bool reset_stats)
-{
+void st_monitor_configuration_applied(bool reset_window, bool reset_stats) {
 	mutex_lock(&st_monitor.lock);
 	if (reset_window) {
 		st_monitor.head = 0;
@@ -168,8 +153,7 @@ void st_monitor_configuration_applied(bool reset_window, bool reset_stats)
 	wake_up_all(&st_monitor.wait_queue);
 }
 
-void st_monitor_stop(void)
-{
+void st_monitor_stop(void) {
 	mutex_lock(&st_monitor.lock);
 	WRITE_ONCE(st_monitor.stopping, true);
 	atomic64_inc(&st_monitor.wake_generation);
@@ -177,8 +161,7 @@ void st_monitor_stop(void)
 	wake_up_all(&st_monitor.wait_queue);
 }
 
-int st_monitor_admit(__u32 syscall_number)
-{
+int st_monitor_admit(__u32 syscall_number) {
 	char program_name[ST_PROGRAM_NAME_LEN];
 	__u32 effective_uid;
 	__u32 max_per_second;
@@ -197,19 +180,14 @@ int st_monitor_admit(__u32 syscall_number)
 
 		if (st_monitor.stopping) {
 			if (blocked)
-				st_monitor_wait_finished(ktime_get_ns(),
-					wait_started_ns, program_name,
-					effective_uid, false);
+				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, false);
 			mutex_unlock(&st_monitor.lock);
 			return -EINTR;
 		}
 
-		if (!st_state_get_admission(syscall_number, program_name,
-					    effective_uid, &max_per_second)) {
+		if (!st_state_get_admission(syscall_number, program_name, effective_uid, &max_per_second)) {
 			if (blocked)
-				st_monitor_wait_finished(ktime_get_ns(),
-					wait_started_ns, program_name,
-					effective_uid, true);
+				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
 		}
@@ -217,14 +195,12 @@ int st_monitor_admit(__u32 syscall_number)
 		now = ktime_get_ns();
 		st_monitor_prune(now);
 		if (st_monitor.count < max_per_second) {
-			__u32 tail = (st_monitor.head + st_monitor.count) %
-				     ST_MAX_LIMIT;
+			__u32 tail = (st_monitor.head + st_monitor.count) % ST_MAX_LIMIT;
 
 			st_monitor.timestamps[tail] = now;
 			st_monitor.count++;
 			if (blocked)
-				st_monitor_wait_finished(now, wait_started_ns,
-					program_name, effective_uid, true);
+				st_monitor_wait_finished(now, wait_started_ns, program_name, effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
 		}
@@ -240,22 +216,18 @@ int st_monitor_admit(__u32 syscall_number)
 
 		wait_result = wait_event_interruptible_hrtimeout(
 			st_monitor.wait_queue,
-			READ_ONCE(st_monitor.stopping) ||
-			atomic64_read(&st_monitor.wake_generation) !=
-				captured_generation,
+			READ_ONCE(st_monitor.stopping) || atomic64_read(&st_monitor.wake_generation) != captured_generation,
 			ns_to_ktime(deadline - now));
 		if (wait_result == -ERESTARTSYS) {
 			mutex_lock(&st_monitor.lock);
-			st_monitor_wait_finished(ktime_get_ns(), wait_started_ns,
-					 program_name, effective_uid, false);
+			st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, false);
 			mutex_unlock(&st_monitor.lock);
 			return -ERESTARTSYS;
 		}
 	}
 }
 
-void st_monitor_get_stats(struct st_stats *stats)
-{
+void st_monitor_get_stats(struct st_stats *stats) {
 	__u64 now;
 
 	mutex_lock(&st_monitor.lock);
@@ -267,8 +239,7 @@ void st_monitor_get_stats(struct st_stats *stats)
 	mutex_unlock(&st_monitor.lock);
 }
 
-void st_monitor_reset_stats(void)
-{
+void st_monitor_reset_stats(void) {
 	mutex_lock(&st_monitor.lock);
 	st_monitor_reset_stats_locked(ktime_get_ns());
 	mutex_unlock(&st_monitor.lock);
