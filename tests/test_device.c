@@ -9,8 +9,7 @@
 
 #include "syscall_throttle.h"
 
-int main(void)
-{
+int main(void) {
 	struct st_config config;
 	int fd;
 

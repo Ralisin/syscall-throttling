@@ -17,8 +17,7 @@ struct context {
 	unsigned long rounds;
 };
 
-static int futex_wait(atomic_int *address, int expected)
-{
+static int futex_wait(atomic_int *address, int expected) {
 	int result = syscall(SYS_futex, address, FUTEX_WAIT_PRIVATE, expected,
 			     NULL, NULL, 0);
 
@@ -27,14 +26,12 @@ static int futex_wait(atomic_int *address, int expected)
 	return 0;
 }
 
-static int futex_wake(atomic_int *address)
-{
+static int futex_wake(atomic_int *address) {
 	return syscall(SYS_futex, address, FUTEX_WAKE_PRIVATE, 1,
 		       NULL, NULL, 0) == -1 ? -1 : 0;
 }
 
-static void *peer_thread(void *argument)
-{
+static void *peer_thread(void *argument) {
 	struct context *context = argument;
 	unsigned long round;
 
@@ -54,8 +51,7 @@ static void *peer_thread(void *argument)
 	return NULL;
 }
 
-static int parse_rounds(int argc, char **argv, unsigned long *rounds)
-{
+static int parse_rounds(int argc, char **argv, unsigned long *rounds) {
 	char *end;
 
 	if (argc == 1) {
@@ -69,15 +65,12 @@ static int parse_rounds(int argc, char **argv, unsigned long *rounds)
 	return errno || !*argv[1] || *end || !*rounds ? -1 : 0;
 }
 
-static unsigned long long elapsed_ns(const struct timespec *start,
-				     const struct timespec *end)
-{
+static unsigned long long elapsed_ns(const struct timespec *start, const struct timespec *end) {
 	return (unsigned long long)((end->tv_sec - start->tv_sec) *
 				    1000000000LL + end->tv_nsec - start->tv_nsec);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	struct context context;
 	struct timespec start;
 	struct timespec end;

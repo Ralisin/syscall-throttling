@@ -10,8 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static int parse_calls(int argc, char **argv, unsigned long *calls)
-{
+static int parse_calls(int argc, char **argv, unsigned long *calls) {
 	char *end;
 
 	if (argc == 1) {
@@ -25,15 +24,12 @@ static int parse_calls(int argc, char **argv, unsigned long *calls)
 	return errno || !*argv[1] || *end || !*calls || *calls > 100 ? -1 : 0;
 }
 
-static unsigned long long elapsed_ns(const struct timespec *start,
-				     const struct timespec *end)
-{
+static unsigned long long elapsed_ns(const struct timespec *start, const struct timespec *end) {
 	return (unsigned long long)((end->tv_sec - start->tv_sec) *
 				    1000000000LL + end->tv_nsec - start->tv_nsec);
 }
 
-static void terminate_children(pid_t *children, unsigned long count)
-{
+static void terminate_children(pid_t *children, unsigned long count) {
 	unsigned long index;
 
 	for (index = 0; index < count; index++)
@@ -42,8 +38,7 @@ static void terminate_children(pid_t *children, unsigned long count)
 		waitpid(children[index], NULL, 0);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	struct timespec start;
 	struct timespec end;
 	unsigned long calls;

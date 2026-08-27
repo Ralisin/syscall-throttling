@@ -24,8 +24,7 @@ static atomic_int worker_failure;
 static atomic_int reader_stop;
 static atomic_int reader_failure;
 
-static void sleep_milliseconds(long milliseconds)
-{
+static void sleep_milliseconds(long milliseconds) {
 	struct timespec delay = {
 		.tv_sec = milliseconds / 1000,
 		.tv_nsec = milliseconds % 1000 * 1000000L,
@@ -35,8 +34,7 @@ static void sleep_milliseconds(long milliseconds)
 		;
 }
 
-static int get_stats(struct st_stats *stats)
-{
+static int get_stats(struct st_stats *stats) {
 	if (ioctl(descriptor, ST_IOC_GET_STATS, stats) == -1) {
 		perror("get stats");
 		return -1;
@@ -44,8 +42,7 @@ static int get_stats(struct st_stats *stats)
 	return 0;
 }
 
-static int stats_are_consistent(const struct st_stats *stats)
-{
+static int stats_are_consistent(const struct st_stats *stats) {
 	uint64_t maximum_blocked_time;
 
 	if (stats->reserved != 0 ||
@@ -64,22 +61,19 @@ static int stats_are_consistent(const struct st_stats *stats)
 	return 1;
 }
 
-static int expect_identity(const struct st_stats *stats)
-{
+static int expect_identity(const struct st_stats *stats) {
 	return !strcmp(stats->peak_program, "test_stats") &&
 	       stats->peak_uid == 0;
 }
 
-static void *single_getpid(void *argument)
-{
+static void *single_getpid(void *argument) {
 	(void)argument;
 	if (syscall(SYS_getpid) == -1)
 		atomic_store(&worker_failure, 1);
 	return NULL;
 }
 
-static void *barrier_getpid(void *argument)
-{
+static void *barrier_getpid(void *argument) {
 	int result;
 
 	(void)argument;
@@ -91,8 +85,7 @@ static void *barrier_getpid(void *argument)
 	return single_getpid(NULL);
 }
 
-static void *read_stats_repeatedly(void *argument)
-{
+static void *read_stats_repeatedly(void *argument) {
 	struct st_stats stats;
 
 	(void)argument;
@@ -105,8 +98,7 @@ static void *read_stats_repeatedly(void *argument)
 	return NULL;
 }
 
-static int configure_monitor(void)
-{
+static int configure_monitor(void) {
 	struct st_program program = { .name = "test_stats" };
 	struct st_syscall syscall = { .number = SYS_getpid };
 	uint32_t max_per_second = 1;
@@ -120,8 +112,7 @@ static int configure_monitor(void)
 	return 0;
 }
 
-static int test_single_wait(void)
-{
+static int test_single_wait(void) {
 	struct st_stats stats;
 
 	if (ioctl(descriptor, ST_IOC_RESET_STATS) == -1 ||
@@ -143,8 +134,7 @@ static int test_single_wait(void)
 	return ioctl(descriptor, ST_IOC_DISABLE);
 }
 
-static int wait_until_blocked(void)
-{
+static int wait_until_blocked(void) {
 	struct st_stats stats;
 	int attempt;
 
@@ -158,8 +148,7 @@ static int wait_until_blocked(void)
 	return -1;
 }
 
-static int test_reset_while_blocked(void)
-{
+static int test_reset_while_blocked(void) {
 	struct st_stats stats;
 	pthread_t worker;
 
@@ -197,8 +186,7 @@ static int test_reset_while_blocked(void)
 	return 0;
 }
 
-static int test_concurrent_waiters(void)
-{
+static int test_concurrent_waiters(void) {
 	struct st_stats stats;
 	pthread_t workers[3];
 	pthread_t reader;
@@ -239,8 +227,7 @@ static int test_concurrent_waiters(void)
 	return 0;
 }
 
-int main(void)
-{
+int main(void) {
 	if (geteuid() != 0) {
 		fprintf(stderr, "statistics test must run as root\n");
 		return EXIT_FAILURE;

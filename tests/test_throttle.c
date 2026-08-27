@@ -13,21 +13,17 @@
 
 static volatile sig_atomic_t signal_seen;
 
-static void handle_signal(int signal_number)
-{
+static void handle_signal(int signal_number) {
 	(void)signal_number;
 	signal_seen = 1;
 }
 
-static uint64_t elapsed_nanoseconds(const struct timespec *start,
-				    const struct timespec *end)
-{
+static uint64_t elapsed_nanoseconds(const struct timespec *start, const struct timespec *end) {
 	return (uint64_t)(end->tv_sec - start->tv_sec) * 1000000000ULL +
 	       (uint64_t)(end->tv_nsec - start->tv_nsec);
 }
 
-static int run_burst(unsigned long calls)
-{
+static int run_burst(unsigned long calls) {
 	struct timespec start;
 	struct timespec end;
 	unsigned long index;
@@ -47,8 +43,7 @@ static int run_burst(unsigned long calls)
 	return errors ? -1 : 0;
 }
 
-static int run_signal_wait(void)
-{
+static int run_signal_wait(void) {
 	struct sigaction action;
 	struct timespec start;
 	struct timespec end;
@@ -80,8 +75,7 @@ static int run_signal_wait(void)
 	return result == -1 && saved_errno == EINTR && signal_seen ? 0 : -1;
 }
 
-int main(int argument_count, char **arguments)
-{
+int main(int argument_count, char **arguments) {
 	char *end;
 	unsigned long calls;
 

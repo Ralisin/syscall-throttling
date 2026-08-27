@@ -10,8 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static int parse_rounds(int argc, char **argv, unsigned long *rounds)
-{
+static int parse_rounds(int argc, char **argv, unsigned long *rounds) {
 	char *end;
 
 	if (argc == 1) {
@@ -26,15 +25,12 @@ static int parse_rounds(int argc, char **argv, unsigned long *rounds)
 	       -1 : 0;
 }
 
-static unsigned long long elapsed_ns(const struct timespec *start,
-				     const struct timespec *end)
-{
+static unsigned long long elapsed_ns(const struct timespec *start, const struct timespec *end) {
 	return (unsigned long long)((end->tv_sec - start->tv_sec) *
 				    1000000000LL + end->tv_nsec - start->tv_nsec);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	static const char payload[] = "payload";
 	char path[] = "/tmp/st_mixed.XXXXXX";
 	struct timespec start;

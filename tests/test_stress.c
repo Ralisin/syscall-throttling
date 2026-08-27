@@ -28,15 +28,12 @@ static pthread_cond_t start_condition = PTHREAD_COND_INITIALIZER;
 static int start_workers;
 static atomic_int worker_failure;
 
-static uint64_t elapsed_nanoseconds(const struct timespec *start,
-				    const struct timespec *end)
-{
+static uint64_t elapsed_nanoseconds(const struct timespec *start, const struct timespec *end) {
 	return (uint64_t)(end->tv_sec - start->tv_sec) * 1000000000ULL +
 	       (uint64_t)(end->tv_nsec - start->tv_nsec);
 }
 
-static int parse_positive(const char *text, unsigned long *value)
-{
+static int parse_positive(const char *text, unsigned long *value) {
 	char *end;
 	unsigned long parsed;
 
@@ -48,8 +45,7 @@ static int parse_positive(const char *text, unsigned long *value)
 	return 0;
 }
 
-static void *run_worker(void *argument)
-{
+static void *run_worker(void *argument) {
 	const struct worker_context *context = argument;
 	unsigned long index;
 
@@ -77,8 +73,7 @@ static void *run_worker(void *argument)
 	return NULL;
 }
 
-static int write_all(int descriptor, const char *buffer, size_t length)
-{
+static int write_all(int descriptor, const char *buffer, size_t length) {
 	size_t offset = 0;
 
 	while (offset < length) {
@@ -96,9 +91,7 @@ static int write_all(int descriptor, const char *buffer, size_t length)
 	return 0;
 }
 
-static int run_workload(enum workload_kind kind, unsigned long thread_count,
-			unsigned long calls, unsigned long release_delay_ms)
-{
+static int run_workload(enum workload_kind kind, unsigned long thread_count, unsigned long calls, unsigned long release_delay_ms) {
 	struct worker_context context = {
 		.kind = kind,
 		.calls = calls,
@@ -176,8 +169,7 @@ out:
 	return result;
 }
 
-int main(int argument_count, char **arguments)
-{
+int main(int argument_count, char **arguments) {
 	unsigned long thread_count;
 	unsigned long calls;
 	unsigned long delay_ms = 0;

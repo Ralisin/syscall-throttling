@@ -12,8 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static int parse_calls(int argc, char **argv, unsigned long *calls)
-{
+static int parse_calls(int argc, char **argv, unsigned long *calls) {
 	char *end;
 
 	if (argc == 1) {
@@ -27,15 +26,12 @@ static int parse_calls(int argc, char **argv, unsigned long *calls)
 	return errno || !*argv[1] || *end || !*calls || *calls > 100 ? -1 : 0;
 }
 
-static unsigned long long elapsed_ns(const struct timespec *start,
-				     const struct timespec *end)
-{
+static unsigned long long elapsed_ns(const struct timespec *start, const struct timespec *end) {
 	return (unsigned long long)((end->tv_sec - start->tv_sec) *
 				    1000000000LL + end->tv_nsec - start->tv_nsec);
 }
 
-static void run_client(const struct sockaddr_in *address, unsigned long calls)
-{
+static void run_client(const struct sockaddr_in *address, unsigned long calls) {
 	unsigned long index;
 
 	for (index = 0; index < calls; index++) {
@@ -50,8 +46,7 @@ static void run_client(const struct sockaddr_in *address, unsigned long calls)
 	_exit(EXIT_SUCCESS);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	struct sockaddr_in address = {
 		.sin_family = AF_INET,
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK),

@@ -21,8 +21,7 @@ struct read_context {
 	char value;
 };
 
-static void *run_getpid_calls(void *argument)
-{
+static void *run_getpid_calls(void *argument) {
 	pid_t expected = getpid();
 	int call;
 
@@ -38,8 +37,7 @@ static void *run_getpid_calls(void *argument)
 	return NULL;
 }
 
-static void *run_blocking_read(void *argument)
-{
+static void *run_blocking_read(void *argument) {
 	struct read_context *context = argument;
 
 	context->result = syscall(SYS_read, context->descriptor,
@@ -47,8 +45,7 @@ static void *run_blocking_read(void *argument)
 	return NULL;
 }
 
-static int test_concurrent_getpid(void)
-{
+static int test_concurrent_getpid(void) {
 	pthread_t threads[GETPID_THREAD_COUNT];
 	int created = 0;
 	int index;
@@ -70,8 +67,7 @@ static int test_concurrent_getpid(void)
 	return 0;
 }
 
-static int test_blocking_read(long delay_nanoseconds)
-{
+static int test_blocking_read(long delay_nanoseconds) {
 	const struct timespec delay = {
 		.tv_sec = delay_nanoseconds / 1000000000L,
 		.tv_nsec = delay_nanoseconds % 1000000000L,
@@ -118,8 +114,7 @@ static int test_blocking_read(long delay_nanoseconds)
 	return 0;
 }
 
-int main(int argument_count, char **arguments)
-{
+int main(int argument_count, char **arguments) {
 	if (argument_count == 2 && !strcmp(arguments[1], "blocking-read")) {
 		if (test_blocking_read(1000000000L))
 			return EXIT_FAILURE;

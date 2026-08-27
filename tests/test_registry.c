@@ -24,9 +24,7 @@ struct concurrent_writer_context {
 	struct st_program program;
 };
 
-static int expect_error(int descriptor, unsigned long command, void *argument,
-			int expected_errno, const char *label)
-{
+static int expect_error(int descriptor, unsigned long command, void *argument, int expected_errno, const char *label) {
 	errno = 0;
 	if (ioctl(descriptor, command, argument) != -1 ||
 	    errno != expected_errno) {
@@ -37,8 +35,7 @@ static int expect_error(int descriptor, unsigned long command, void *argument,
 	return 0;
 }
 
-static int get_config(int descriptor, struct st_config *config)
-{
+static int get_config(int descriptor, struct st_config *config) {
 	if (ioctl(descriptor, ST_IOC_GET_CONFIG, config) == -1) {
 		perror("get config");
 		return -1;
@@ -46,8 +43,7 @@ static int get_config(int descriptor, struct st_config *config)
 	return 0;
 }
 
-static int test_validation(int descriptor)
-{
+static int test_validation(int descriptor) {
 	struct st_program empty_program = { 0 };
 	struct st_program long_program;
 	struct st_program_entry entry = {
@@ -119,8 +115,7 @@ static int test_validation(int descriptor)
 	return 0;
 }
 
-static int test_basic_operations(int descriptor)
-{
+static int test_basic_operations(int descriptor) {
 	struct st_program program = { .name = "registry_test" };
 	struct st_program_entry program_entry;
 	struct st_syscall syscall = { .number = SYS_getpid };
@@ -213,8 +208,7 @@ static int test_basic_operations(int descriptor)
 	return 0;
 }
 
-static int test_atomic_configuration(int descriptor)
-{
+static int test_atomic_configuration(int descriptor) {
 	struct st_program existing = { .name = "existing" };
 	struct st_configuration_update update;
 	struct st_config before;
@@ -302,8 +296,7 @@ static int test_atomic_configuration(int descriptor)
 	return 0;
 }
 
-static int test_capacities(int descriptor)
-{
+static int test_capacities(int descriptor) {
 	struct st_program program;
 	struct st_syscall syscall;
 	struct st_uid uid;
@@ -367,8 +360,7 @@ static int test_capacities(int descriptor)
 	return 0;
 }
 
-static void *concurrent_writer(void *argument)
-{
+static void *concurrent_writer(void *argument) {
 	const struct concurrent_writer_context *context = argument;
 	int descriptor;
 	int iteration;
@@ -394,8 +386,7 @@ static void *concurrent_writer(void *argument)
 	return NULL;
 }
 
-static void *concurrent_reader(void *argument)
-{
+static void *concurrent_reader(void *argument) {
 	struct st_program_entry entry;
 	struct st_config config;
 	int descriptor;
@@ -434,8 +425,7 @@ static void *concurrent_reader(void *argument)
 	return NULL;
 }
 
-static int test_concurrency(void)
-{
+static int test_concurrency(void) {
 	static const char writer_names[3][ST_PROGRAM_NAME_LEN] = {
 		"concurrent_0",
 		"concurrent_1",
@@ -478,8 +468,7 @@ static int test_concurrency(void)
 	return 0;
 }
 
-int main(void)
-{
+int main(void) {
 	struct st_config config;
 	int descriptor;
 
