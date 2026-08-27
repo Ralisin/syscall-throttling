@@ -13,8 +13,7 @@ static const char *const syscall_header_paths[] = {
 	"/usr/include/asm/unistd_64.h",
 };
 
-static int parse_number(const char *text, __s32 *number)
-{
+static int parse_number(const char *text, __s32 *number) {
 	char *end;
 	long parsed;
 
@@ -27,8 +26,7 @@ static int parse_number(const char *text, __s32 *number)
 	return 0;
 }
 
-static FILE *open_syscall_header(void)
-{
+static FILE *open_syscall_header(void) {
 	size_t index;
 
 	for (index = 0; index < sizeof(syscall_header_paths) /
@@ -41,8 +39,7 @@ static FILE *open_syscall_header(void)
 	return NULL;
 }
 
-int st_resolve_syscall(const char *text, __s32 *number)
-{
+int st_resolve_syscall(const char *text, __s32 *number) {
 	char candidate[128];
 	char line[256];
 	const char *requested = text;
@@ -72,8 +69,7 @@ int st_resolve_syscall(const char *text, __s32 *number)
 	return -1;
 }
 
-int st_lookup_syscall_name(__s32 number, char *name, size_t size)
-{
+int st_lookup_syscall_name(__s32 number, char *name, size_t size) {
 	char candidate[128];
 	char line[256];
 	long parsed;

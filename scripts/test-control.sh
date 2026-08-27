@@ -67,7 +67,7 @@ fi
 
 human=$("$control" show)
 printf '%s\n' "$human" | grep -q 'read (0)'
-printf '%s\n' "$human" | grep -q "Use 'show --raw'"
+printf '%s\n' "$human" | grep -q "Usare 'show --raw'"
 
 if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
 	if runuser -u "$SUDO_USER" -- "$control" clear >/dev/null 2>&1; then
