@@ -73,3 +73,27 @@ la media richiesta.
 Il reset non porta a zero `current_blocked_threads`, perche' quei processi sono
 ancora realmente in attesa. Azzera l'intervallo precedente e usa il numero
 corrente come valore iniziale e come primo picco del nuovo intervallo.
+
+## Rimozione del modulo
+
+Non basta rimuovere la kprobe: alcune chiamate possono essere gia' state
+deviate nel wrapper oppure trovarsi nel dispatcher originale. `active_calls`
+conta tutti i wrapper entrati, non soltanto quelli in attesa sul limite.
+
+La sequenza scelta e':
+
+1. rimuovere la kprobe per impedire nuovi ingressi;
+2. impostare lo stato di arresto e svegliare i waiter;
+3. aspettare che `active_calls` torni a zero;
+4. liberare le risorse del monitor.
+
+`exit`, `exit_group` e `rt_sigreturn` vengono rifiutate perche' non seguono il
+normale percorso di ritorno necessario a decrementare il contatore.
+
+## Verifica finale
+
+La versione finale e' stata compilata con `make W=1` su Ubuntu 24.04.4, kernel
+`7.0.0-29-generic`. La suite controlla anche permessi, input non validi,
+riconfigurazione durante il carico, segnali, statistiche e unload. Dopo i test
+il modulo deve risultare assente da `lsmod` e i nuovi messaggi del kernel non
+devono contenere errori riferiti a `syscall_throttle`.
