@@ -1,0 +1,94 @@
+# Prestazioni
+
+Lo scopo del modulo e' rallentare le system call quando viene superato un
+limite. C'e' pero' una domanda altrettanto importante: quanto costa il modulo
+quando il limite non viene raggiunto e il processo puo' proseguire subito?
+
+Per rispondere abbiamo misurato `getpid` e `read` in quattro situazioni, dalla
+baseline senza modulo fino al percorso completo attraverso hook e monitor. In
+questo modo possiamo separare il costo dell'intercettazione dal ritardo voluto
+del throttling.
+
+## Come abbiamo svolto la prova
+
+Il programma `tests/perf_probe.c` invoca direttamente le due syscall; nel caso
+di `read` legge un byte alla volta da `/dev/zero`. Prima delle misure esegue
+10000 chiamate di riscaldamento, poi raccoglie 100000 campioni mantenendo il
+processo sulla stessa CPU.
+
+Abbiamo ripetuto ogni scenario sette volte:
+
+| Scenario | Che cosa succede |
+| --- | --- |
+| Modulo assente | E' la misura di riferimento. |
+| Modulo caricato e disabilitato | La kprobe esegue il filtro, ma il monitor e' spento. |
+| Attivo, nessuna corrispondenza | Il monitor e' acceso, ma il programma non rientra nei filtri. |
+| Selezionata, senza throttling | La chiamata attraversa hook, wrapper e monitor, ma `MAX` e' abbastanza alto da non farla dormire. |
+
+La prova e' stata eseguita sulla stessa VM usata per la verifica del progetto:
+
+- Ubuntu 24.04.4 LTS x86-64;
+- kernel `7.0.0-29-generic`;
+- VMware su AMD Ryzen 9 9900X 12-Core Processor;
+- CPU virtuale 0;
+- GCC 13.3.0 e compilazione con `make W=1`.
+
+## Risultati
+
+Il valore piu' utile per il confronto e' la mediana, perche' risente meno delle
+interruzioni occasionali della VM. Nella tabella riportiamo la mediana delle
+sette ripetizioni. Delta e percentuale sono calcolati rispetto al modulo
+assente.
+
+| Scenario | `getpid` mediana [ns] | Delta [ns] | Overhead | `read` mediana [ns] | Delta [ns] | Overhead |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Modulo assente | 17600 | - | riferimento | 18000 | - | riferimento |
+| Modulo caricato e disabilitato | 18700 | +1100 | +6.25% | 19100 | +1100 | +6.11% |
+| Attivo, nessuna corrispondenza | 18700 | +1100 | +6.25% | 19100 | +1100 | +6.11% |
+| Selezionata, senza throttling | 28901 | +11301 | +64.21% | 29400 | +11400 | +63.33% |
+
+Il primo risultato interessante e' che tenere il modulo caricato costa circa
+1.1 microsecondi per chiamata nella configurazione provata, poco piu' del 6%.
+Accendere il monitor senza selezionare il processo non cambia la mediana: il
+percorso si ferma ancora al filtro.
+
+Quando la chiamata viene selezionata, invece, entrano in gioco il wrapper, il
+mutex del monitor e la gestione della finestra temporale. Il costo aggiuntivo
+sale a circa 11.3-11.4 microsecondi, cioe' poco piu' del 63%. In questa prova
+nessun task viene sospeso: stiamo misurando il costo del controllo, non il
+ritardo imposto da `MAX`.
+
+## Da dove arriva l'overhead
+
+Con il modulo caricato, la kprobe viene eseguita all'ingresso del dispatcher e
+consulta sempre lo stato di configurazione. I registri hanno dimensione massima
+fissa e la ricerca e' lineare: il costo del filtro e' quindi limitato, ma cresce
+con il numero di syscall, programmi ed EUID registrati.
+
+Una chiamata selezionata esegue inoltre il wrapper, aggiorna contatori atomici,
+acquisisce il mutex del monitor, elimina i timestamp scaduti e inserisce il
+nuovo timestamp nel buffer circolare. Sotto concorrenza, il mutex condiviso e'
+il principale punto di serializzazione.
+
+Il buffer contiene fino a `ST_MAX_LIMIT` timestamp da 64 bit. Con il limite
+attuale di 1000000 elementi richiede 8000000 byte, circa 7.63 MiB, allocati al
+caricamento del modulo indipendentemente dal valore configurato di `MAX`.
+
+Quando `MAX` viene davvero raggiunto, il tempo di attesa non e' overhead
+accidentale ma il comportamento richiesto. Il task dorme sulla wait queue fino
+alla prima scadenza utile, senza consumare CPU in busy waiting.
+
+## Ripetere il benchmark
+
+Il modulo deve essere inizialmente assente. Dopo avere compilato il progetto,
+la stessa prova si esegue con:
+
+```sh
+make
+sudo env SAMPLES=100000 REPETITIONS=7 \
+    ./scripts/benchmark-performance.sh > performance.csv
+```
+
+Lo script sceglie la prima CPU disponibile; si puo' indicarne una con
+`BENCHMARK_CPU`. Nel CSV salva anche kernel, modello della CPU e parametri della
+prova.

@@ -147,6 +147,11 @@ user/     utility throttle_ctl
 include/  interfaccia ioctl condivisa
 tests/    programmi usati dai test
 scripts/  demo e test di integrazione
+docs/     architettura, prestazioni e scelte di progetto
 ```
+
+Per una panoramica dei componenti e dei flussi interni, vedere
+[Architettura](docs/ARCHITETTURA.md). La metodologia per misurare l'overhead e'
+descritta in [Prestazioni](docs/PRESTAZIONI.md).
 
 Il codice e' distribuito secondo la licenza GPL-2.0-only.

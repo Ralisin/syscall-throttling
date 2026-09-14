@@ -19,6 +19,7 @@ SYSCALL_EXAMPLES := \
 	syscalls/sensitive/execve/st_execve
 
 all: test_device test_hook test_registry test_throttle test_stats test_stress \
+	perf_probe \
 	$(SYSCALL_EXAMPLES)
 
 test_device: test_device.c ../include/syscall_throttle.h
@@ -38,6 +39,9 @@ test_stats: test_stats.c ../include/syscall_throttle.h
 
 test_stress: test_stress.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread -o $@ test_stress.c
+
+perf_probe: perf_probe.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ perf_probe.c -lm
 
 syscalls/getpid/st_getpid: syscalls/getpid/workload.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $<
@@ -79,4 +83,5 @@ syscalls/sensitive/execve/st_execve: syscalls/sensitive/execve/workload.c
 
 clean:
 	$(RM) test_device test_hook test_registry test_throttle test_stats test_stress \
+		perf_probe \
 		$(SYSCALL_EXAMPLES)
