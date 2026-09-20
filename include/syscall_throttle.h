@@ -8,14 +8,14 @@
 #define ST_DEVICE_NAME "syscall_throttle"
 #define ST_DEVICE_PATH "/dev/" ST_DEVICE_NAME
 
-#define ST_PROGRAM_NAME_LEN 16U
+#define ST_PROGRAM_PATH_LEN 256U
 #define ST_MAX_LIMIT 1000000U
 #define ST_MAX_PROGRAMS 64U
 #define ST_MAX_UIDS 64U
 #define ST_MAX_SYSCALLS 64U
 
 struct st_program {
-	char name[ST_PROGRAM_NAME_LEN];
+	char path[ST_PROGRAM_PATH_LEN];
 };
 
 struct st_uid {
@@ -40,7 +40,7 @@ struct st_program_entry {
 	__u64 generation;
 	__u32 index;
 	__u32 reserved;
-	char name[ST_PROGRAM_NAME_LEN];
+	char path[ST_PROGRAM_PATH_LEN];
 };
 
 struct st_uid_entry {
@@ -64,31 +64,7 @@ struct st_stats {
 	__u32 peak_blocked_threads;
 	__u32 peak_uid;
 	__u32 reserved;
-	char peak_program[ST_PROGRAM_NAME_LEN];
-};
-
-#define ST_CONFIGURE_CLEAR       (1U << 0)
-#define ST_CONFIGURE_SET_MAX     (1U << 1)
-#define ST_CONFIGURE_SET_ENABLED (1U << 2)
-#define ST_CONFIGURE_RESET_STATS (1U << 3)
-#define ST_CONFIGURE_VALID_FLAGS ( \
-	ST_CONFIGURE_CLEAR | \
-	ST_CONFIGURE_SET_MAX | \
-	ST_CONFIGURE_SET_ENABLED | \
-	ST_CONFIGURE_RESET_STATS \
-)
-
-struct st_configuration_update {
-	__u32 flags;
-	__u32 max_per_second;
-	__u32 program_count;
-	__u32 uid_count;
-	__u32 syscall_count;
-	__u8 enabled;
-	__u8 reserved[3];
-	struct st_program programs[ST_MAX_PROGRAMS];
-	struct st_uid uids[ST_MAX_UIDS];
-	struct st_syscall syscalls[ST_MAX_SYSCALLS];
+	char peak_program_path[ST_PROGRAM_PATH_LEN];
 };
 
 #define ST_IOC_MAGIC 0xB7
@@ -108,5 +84,4 @@ struct st_configuration_update {
 #define ST_IOC_GET_SYSCALL       _IOWR(ST_IOC_MAGIC, 0x0d, struct st_syscall_entry)
 #define ST_IOC_GET_STATS         _IOR(ST_IOC_MAGIC, 0x0e, struct st_stats)
 #define ST_IOC_RESET_STATS       _IO(ST_IOC_MAGIC, 0x0f)
-#define ST_IOC_CONFIGURE         _IOW(ST_IOC_MAGIC, 0x10, struct st_configuration_update)
 #endif

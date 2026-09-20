@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/atomic.h>
 #include <linux/cred.h>
+#include <linux/dcache.h>
 #include <linux/errno.h>
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
@@ -71,7 +72,9 @@ static void st_monitor_wait_started(__u64 now) {
 		st_monitor.stats.peak_blocked_threads = st_monitor.stats.current_blocked_threads;
 }
 
-static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns, const char *program_name, __u32 effective_uid, bool executed) {
+static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns,
+				     const char *program_path,
+				     __u32 effective_uid, bool executed) {
 	__u64 measured_start;
 	__u64 delay;
 
@@ -89,8 +92,28 @@ static void st_monitor_wait_finished(__u64 now, __u64 wait_started_ns, const cha
 	if (delay > st_monitor.stats.peak_delay_ns) {
 		st_monitor.stats.peak_delay_ns = delay;
 		st_monitor.stats.peak_uid = effective_uid;
-		memcpy(st_monitor.stats.peak_program, program_name, ST_PROGRAM_NAME_LEN);
+		memcpy(st_monitor.stats.peak_program_path, program_path,
+		       ST_PROGRAM_PATH_LEN);
 	}
+}
+
+static void st_monitor_capture_path(const struct path *executable,
+				    char *program_path) {
+	char *resolved;
+
+	memset(program_path, 0, ST_PROGRAM_PATH_LEN);
+	if (!executable) {
+		strscpy(program_path, "<unavailable>", ST_PROGRAM_PATH_LEN);
+		return;
+	}
+
+	resolved = d_path(executable, program_path, ST_PROGRAM_PATH_LEN);
+	if (IS_ERR(resolved)) {
+		memset(program_path, 0, ST_PROGRAM_PATH_LEN);
+		strscpy(program_path, "<unavailable>", ST_PROGRAM_PATH_LEN);
+		return;
+	}
+	memmove(program_path, resolved, strlen(resolved) + 1);
 }
 
 static void st_monitor_prune(__u64 now) {
@@ -140,19 +163,6 @@ void st_monitor_configuration_changed(bool reset_window) {
 	wake_up_all(&st_monitor.wait_queue);
 }
 
-void st_monitor_configuration_applied(bool reset_window, bool reset_stats) {
-	mutex_lock(&st_monitor.lock);
-	if (reset_window) {
-		st_monitor.head = 0;
-		st_monitor.count = 0;
-	}
-	if (reset_stats)
-		st_monitor_reset_stats_locked(ktime_get_ns());
-	atomic64_inc(&st_monitor.wake_generation);
-	mutex_unlock(&st_monitor.lock);
-	wake_up_all(&st_monitor.wait_queue);
-}
-
 void st_monitor_stop(void) {
 	mutex_lock(&st_monitor.lock);
 	WRITE_ONCE(st_monitor.stopping, true);
@@ -161,8 +171,8 @@ void st_monitor_stop(void) {
 	wake_up_all(&st_monitor.wait_queue);
 }
 
-int st_monitor_admit(__u32 syscall_number) {
-	char program_name[ST_PROGRAM_NAME_LEN];
+int st_monitor_admit(__u32 syscall_number, const struct path *executable) {
+	char program_path[ST_PROGRAM_PATH_LEN] = { 0 };
 	__u32 effective_uid;
 	__u32 max_per_second;
 	__u64 captured_generation;
@@ -172,7 +182,6 @@ int st_monitor_admit(__u32 syscall_number) {
 	bool blocked = false;
 	__u64 wait_started_ns = 0;
 
-	get_task_comm(program_name, current);
 	effective_uid = from_kuid(&init_user_ns, current_euid());
 
 	for (;;) {
@@ -180,14 +189,14 @@ int st_monitor_admit(__u32 syscall_number) {
 
 		if (st_monitor.stopping) {
 			if (blocked)
-				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, false);
+				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_path, effective_uid, false);
 			mutex_unlock(&st_monitor.lock);
 			return -EINTR;
 		}
 
-		if (!st_state_get_admission(syscall_number, program_name, effective_uid, &max_per_second)) {
+		if (!st_state_get_admission(syscall_number, executable, effective_uid, &max_per_second)) {
 			if (blocked)
-				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, true);
+				st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_path, effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
 		}
@@ -200,13 +209,14 @@ int st_monitor_admit(__u32 syscall_number) {
 			st_monitor.timestamps[tail] = now;
 			st_monitor.count++;
 			if (blocked)
-				st_monitor_wait_finished(now, wait_started_ns, program_name, effective_uid, true);
+				st_monitor_wait_finished(now, wait_started_ns, program_path, effective_uid, true);
 			mutex_unlock(&st_monitor.lock);
 			return 0;
 		}
 		if (!blocked) {
 			blocked = true;
 			wait_started_ns = now;
+			st_monitor_capture_path(executable, program_path);
 			st_monitor_wait_started(now);
 		}
 
@@ -220,7 +230,7 @@ int st_monitor_admit(__u32 syscall_number) {
 			ns_to_ktime(deadline - now));
 		if (wait_result == -ERESTARTSYS) {
 			mutex_lock(&st_monitor.lock);
-			st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_name, effective_uid, false);
+			st_monitor_wait_finished(ktime_get_ns(), wait_started_ns, program_path, effective_uid, false);
 			mutex_unlock(&st_monitor.lock);
 			return -ERESTARTSYS;
 		}

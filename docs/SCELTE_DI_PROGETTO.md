@@ -37,6 +37,9 @@ e il confronto nel pre-handler rimane breve, ma ci sono due conseguenze:
 - identifica il task e puo' essere cambiato, quindi non equivale a un percorso
   completo dell'eseguibile.
 
+In seguito siamo passati da `current->comm` al path assoluto dell'eseguibile,
+risolto in configurazione e confrontato come directory piu' basename.
+
 Ho scelto registri con dimensione massima fissa. Si perde flessibilita', ma il
 tempo del filtro resta limitato e non servono allocazioni dentro la probe.
 

@@ -16,19 +16,19 @@ di `read` legge un byte alla volta da `/dev/zero`. Prima delle misure esegue
 10000 chiamate di riscaldamento, poi raccoglie 100000 campioni mantenendo il
 processo sulla stessa CPU.
 
-Abbiamo ripetuto ogni scenario sette volte:
+Abbiamo ripetuto ogni scenario cinque volte:
 
 | Scenario | Che cosa succede |
 | --- | --- |
 | Modulo assente | E' la misura di riferimento. |
 | Modulo caricato e disabilitato | La kprobe esegue il filtro, ma il monitor e' spento. |
-| Attivo, nessuna corrispondenza | Il monitor e' acceso, ma il programma non rientra nei filtri. |
+| Attivo, nessuna corrispondenza | Il monitor e' acceso, ma il path dell'eseguibile non rientra nei filtri. |
 | Selezionata, senza throttling | La chiamata attraversa hook, wrapper e monitor, ma `MAX` e' abbastanza alto da non farla dormire. |
 
 La prova e' stata eseguita sulla stessa VM usata per la verifica del progetto:
 
 - Ubuntu 24.04.4 LTS x86-64;
-- kernel `7.0.0-29-generic`;
+- kernel `7.0.0-31-generic`;
 - VMware su AMD Ryzen 9 9900X 12-Core Processor;
 - CPU virtuale 0;
 - GCC 13.3.0 e compilazione con `make W=1`.
@@ -37,33 +37,33 @@ La prova e' stata eseguita sulla stessa VM usata per la verifica del progetto:
 
 Il valore piu' utile per il confronto e' la mediana, perche' risente meno delle
 interruzioni occasionali della VM. Nella tabella riportiamo la mediana delle
-sette ripetizioni. Delta e percentuale sono calcolati rispetto al modulo
+cinque ripetizioni. Delta e percentuale sono calcolati rispetto al modulo
 assente.
 
 | Scenario | `getpid` mediana [ns] | Delta [ns] | Overhead | `read` mediana [ns] | Delta [ns] | Overhead |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Modulo assente | 17600 | - | riferimento | 18000 | - | riferimento |
-| Modulo caricato e disabilitato | 18700 | +1100 | +6.25% | 19100 | +1100 | +6.11% |
-| Attivo, nessuna corrispondenza | 18700 | +1100 | +6.25% | 19100 | +1100 | +6.11% |
-| Selezionata, senza throttling | 28901 | +11301 | +64.21% | 29400 | +11400 | +63.33% |
+| Modulo caricato e disabilitato | 18600 | +1000 | +5.68% | 19300 | +1300 | +7.22% |
+| Attivo, nessuna corrispondenza | 19000 | +1400 | +7.95% | 19101 | +1101 | +6.12% |
+| Selezionata, senza throttling | 29600 | +12000 | +68.18% | 29700 | +11700 | +65.00% |
 
 Il primo risultato interessante e' che tenere il modulo caricato costa circa
-1.1 microsecondi per chiamata nella configurazione provata, poco piu' del 6%.
-Accendere il monitor senza selezionare il processo non cambia la mediana: il
-percorso si ferma ancora al filtro.
+1.0-1.3 microsecondi per chiamata nella configurazione provata, tra il 5.68% e
+il 7.22%. Accendere il monitor senza selezionare il processo mantiene un costo
+dello stesso ordine: il percorso si ferma ancora al filtro.
 
 Quando la chiamata viene selezionata, invece, entrano in gioco il wrapper, il
 mutex del monitor e la gestione della finestra temporale. Il costo aggiuntivo
-sale a circa 11.3-11.4 microsecondi, cioe' poco piu' del 63%. In questa prova
-nessun task viene sospeso: stiamo misurando il costo del controllo, non il
-ritardo imposto da `MAX`.
+sale a circa 11.7-12.0 microsecondi, cioe' tra il 65.00% e il 68.18%. In
+questa prova nessun task viene sospeso: stiamo misurando il costo del
+controllo, non il ritardo imposto da `MAX`.
 
 ## Da dove arriva l'overhead
 
 Con il modulo caricato, la kprobe viene eseguita all'ingresso del dispatcher e
 consulta sempre lo stato di configurazione. I registri hanno dimensione massima
 fissa e la ricerca e' lineare: il costo del filtro e' quindi limitato, ma cresce
-con il numero di syscall, programmi ed EUID registrati.
+con il numero di syscall, path ed EUID registrati.
 
 Una chiamata selezionata esegue inoltre il wrapper, aggiorna contatori atomici,
 acquisisce il mutex del monitor, elimina i timestamp scaduti e inserisce il
@@ -85,7 +85,7 @@ la stessa prova si esegue con:
 
 ```sh
 make
-sudo env SAMPLES=100000 REPETITIONS=7 \
+sudo env SAMPLES=100000 REPETITIONS=5 \
     ./scripts/benchmark-performance.sh > performance.csv
 ```
 

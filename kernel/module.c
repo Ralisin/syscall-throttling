@@ -31,6 +31,7 @@ static int __init st_module_init(void) {
 static void __exit st_module_exit(void) {
 	st_hooks_unregister();
 	st_device_unregister();
+	st_state_destroy();
 	st_monitor_destroy();
 }
 

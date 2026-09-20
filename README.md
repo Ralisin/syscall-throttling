@@ -2,12 +2,16 @@
 
 Questo progetto implementa un modulo kernel Linux per limitare la frequenza di
 alcune system call su x86-64. Le chiamate da controllare vengono scelte in base
-al numero della syscall e al nome del programma oppure all'EUID del processo.
+al numero della syscall e al path dell'eseguibile oppure all'EUID del processo.
 Quando il limite e' stato raggiunto, il processo viene messo in attesa senza
 fare busy waiting.
 
+Il kernel risolve il path in configurazione e registra la directory e il
+basename risultanti. La sostituzione del file nella stessa posizione continua
+quindi a essere intercettata, senza risolvere pathname nel pre-handler.
+
 La configurazione passa attraverso il device `/dev/syscall_throttle`. Il
-programma `throttle_ctl` permette di aggiungere o rimuovere programmi, UID e
+programma `throttle_ctl` permette di aggiungere o rimuovere path, UID e
 syscall, attivare il monitor e leggere le statistiche.
 
 ## Ambiente usato
@@ -15,7 +19,7 @@ syscall, attivare il monitor e leggere le statistiche.
 Il progetto e' stato compilato e provato nella seguente VM:
 
 - Ubuntu 24.04.4 LTS x86-64;
-- kernel `7.0.0-29-generic`;
+- kernel `7.0.0-31-generic`;
 - GCC 13.3.0;
 - GNU Make 4.3;
 - Secure Boot disabilitato.
@@ -37,7 +41,7 @@ della configurazione.
 
 `MAX` e' un limite globale: viene condiviso da tutte le syscall e da tutte le
 identita' registrate. Una chiamata viene selezionata quando la syscall e'
-registrata e corrisponde almeno il nome del programma oppure l'EUID.
+registrata e corrisponde almeno il path dell'eseguibile oppure l'EUID.
 
 Durante una riconfigurazione viene incrementata una generazione. In questo
 modo i processi gia' in attesa capiscono che devono rileggere lo stato invece di
@@ -76,11 +80,11 @@ Le modifiche alla configurazione richiedono EUID 0. La lettura dello stato e
 delle statistiche e' invece disponibile anche agli utenti normali.
 
 Esempio con `getpid`, limite globale di cinque chiamate al secondo e selezione
-del programma `test_throttle`:
+del path dell'eseguibile `test_throttle`:
 
 ```sh
 sudo ./user/throttle_ctl configure --clear \
-    --program test_throttle \
+    --program "$(pwd)/tests/test_throttle" \
     --syscall getpid \
     --max 5 \
     --reset-stats \
@@ -129,8 +133,8 @@ programmi separati per provare syscall bloccanti e non bloccanti.
 
 ## Limiti e scelte fatte
 
-- il nome del programma viene letto da `current->comm`: sono disponibili 15
-  caratteri e thread diversi possono avere nomi diversi;
+- i path configurati devono essere assoluti, esistere e contenere al massimo
+  255 caratteri; il registro contiene al massimo 64 eseguibili;
 - la finestra temporale e' mobile e usa il clock monotono;
 - non e' garantito un ordine FIFO tra i processi in attesa;
 - un segnale puo' interrompere l'attesa;

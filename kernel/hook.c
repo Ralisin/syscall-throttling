@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <linux/atomic.h>
 #include <linux/cred.h>
+#include <linux/file.h>
+#include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/mm.h>
 #include <linux/ptrace.h>
+#include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/user_namespace.h>
@@ -46,12 +50,32 @@ static struct st_dispatch_hook st_dispatch = {
 
 static DECLARE_WAIT_QUEUE_HEAD(st_hook_drain_queue);
 
+static struct file *st_current_executable(void) {
+	struct mm_struct *mm = current->mm;
+	struct file *executable;
+
+	if (!mm)
+		return NULL;
+	rcu_read_lock();
+	executable = get_file_rcu(&mm->exe_file);
+	rcu_read_unlock();
+	return executable;
+}
+
 static bool st_should_redirect(const struct pt_regs *registers) {
+	struct file *executable;
 	unsigned int syscall_number = (unsigned int)registers->si;
 	__u32 effective_uid;
+	bool matches;
 
 	effective_uid = from_kuid(&init_user_ns, current_euid());
-	return st_state_matches(syscall_number, current->comm, effective_uid);
+	executable = st_current_executable();
+	matches = st_state_matches(syscall_number,
+				   executable ? &executable->f_path : NULL,
+				   effective_uid);
+	if (executable)
+		fput(executable);
+	return matches;
 }
 
 static int st_dispatch_pre_handler(struct kprobe *probe, struct pt_regs *registers) {
@@ -82,6 +106,7 @@ static void st_dispatch_post_handler(struct kprobe *probe, struct pt_regs *regis
 }
 
 static long st_dispatch_wrapper(const struct pt_regs *registers, unsigned int syscall_number) {
+	struct file *executable;
 	long result;
 
 	atomic64_inc(&st_dispatch.total_hits);
@@ -90,7 +115,10 @@ static long st_dispatch_wrapper(const struct pt_regs *registers, unsigned int sy
 	else if (syscall_number == __NR_read)
 		atomic64_inc(&st_dispatch.read_hits);
 
-	result = st_monitor_admit(syscall_number);
+	executable = st_current_executable();
+	result = st_monitor_admit(syscall_number, executable ? &executable->f_path : NULL);
+	if (executable)
+		fput(executable);
 	if (!result)
 		result = st_dispatch.original(registers, syscall_number);
 

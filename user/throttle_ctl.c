@@ -17,21 +17,36 @@
 
 struct st_configuration_snapshot {
 	struct st_config config;
-	char programs[ST_MAX_PROGRAMS][ST_PROGRAM_NAME_LEN];
+	char programs[ST_MAX_PROGRAMS][ST_PROGRAM_PATH_LEN];
 	__u32 uids[ST_MAX_UIDS];
 	__s32 syscalls[ST_MAX_SYSCALLS];
+};
+
+struct st_configuration_request {
+	bool clear;
+	bool reset_stats;
+	bool set_max;
+	bool state_selected;
+	bool enabled;
+	__u32 max_per_second;
+	__u32 program_count;
+	__u32 uid_count;
+	__u32 syscall_count;
+	struct st_program programs[ST_MAX_PROGRAMS];
+	struct st_uid uids[ST_MAX_UIDS];
+	struct st_syscall syscalls[ST_MAX_SYSCALLS];
 };
 
 static void print_usage(FILE *stream, const char *program) {
 	fprintf(stream,
 		"Uso: %s COMANDO [OPZIONI]\n\n"
 		"Comandi di configurazione:\n"
-		"  configure [OPTIONS]       Applica una configurazione atomica\n"
+		"  configure [OPTIONS]       Disabilita, modifica e ripristina il monitor\n"
 		"  clear                     Svuota e disabilita la configurazione\n"
 		"  enable | disable          Attiva o disattiva il monitor\n"
 		"  set-max NUMBER            Imposta il limite per secondo\n"
-		"  add-program NAME          Registra il nome di un programma\n"
-		"  remove-program NAME       Rimuove il nome di un programma\n"
+		"  add-program PATH          Registra il path di un eseguibile\n"
+		"  remove-program PATH       Rimuove il path di un eseguibile\n"
 		"  add-uid UID               Registra un EUID\n"
 		"  remove-uid UID            Rimuove un EUID\n"
 		"  add-syscall NAME|NUMBER   Registra una system call\n"
@@ -50,11 +65,15 @@ static void print_usage(FILE *stream, const char *program) {
 static void print_configure_help(FILE *stream, const char *program) {
 	fprintf(stream,
 		"Uso: %s configure [OPTIONS]\n\n"
-		"Le modifiche vengono applicate insieme. Senza --clear, gli elementi\n"
-		"gia' registrati restano presenti e i duplicati vengono ignorati.\n\n"
+		"Il monitor viene disabilitato durante le modifiche. Alla fine viene\n"
+		"applicato --enable/--disable o ripristinato lo stato precedente.\n"
+		"Senza --clear, gli elementi gia' registrati\n"
+		"restano presenti e i duplicati vengono ignorati. Le operazioni non\n"
+		"sono atomiche: un errore puo' lasciare modifiche parziali e il monitor\n"
+		"disabilitato.\n\n"
 		"Opzioni:\n"
 		"  --clear                   Parte da una configurazione vuota\n"
-		"  --program NAME            Registra un programma (ripetibile)\n"
+		"  --program PATH            Registra un eseguibile (ripetibile)\n"
 		"  --uid UID                 Registra un EUID (ripetibile)\n"
 		"  --syscall NAME|NUMBER     Registra una syscall (ripetibile)\n"
 		"  --max NUMBER              Imposta il limite per secondo\n"
@@ -62,7 +81,7 @@ static void print_configure_help(FILE *stream, const char *program) {
 		"  --reset-stats             Azzera le statistiche\n"
 		"  -h, --help                Mostra questo aiuto\n\n"
 		"Esempio:\n"
-		"  sudo %s configure --clear --program test_throttle \\\n"
+		"  sudo %s configure --clear --program /opt/test_throttle \\\n"
 		"      --syscall getpid --max 2 --enable\n",
 		program, program);
 }
@@ -113,13 +132,13 @@ static int parse_u32(const char *text, __u32 *value) {
 	return 0;
 }
 
-static int prepare_program(const char *name, struct st_program *program) {
-	size_t length = strlen(name);
+static int prepare_program(const char *path, struct st_program *program) {
+	size_t length = strlen(path);
 
-	if (!length || length >= ST_PROGRAM_NAME_LEN)
+	if (!length || path[0] != '/' || length >= ST_PROGRAM_PATH_LEN)
 		return -1;
 	memset(program, 0, sizeof(*program));
-	memcpy(program->name, name, length);
+	memcpy(program->path, path, length);
 	return 0;
 }
 
@@ -155,7 +174,7 @@ static void print_stats(const struct st_stats *stats) {
 	printf("throttled_calls: %" PRIu64 "\n",
 	       (uint64_t)stats->throttled_calls);
 	printf("peak_delay_ns: %" PRIu64 "\n", (uint64_t)stats->peak_delay_ns);
-	printf("peak_program: %s\n", stats->peak_program);
+	printf("peak_program_path: %s\n", stats->peak_program_path);
 	printf("peak_uid: %" PRIu32 "\n", stats->peak_uid);
 }
 
@@ -171,7 +190,7 @@ static void print_stats_raw(const struct st_stats *stats) {
 	printf("throttled_calls=%" PRIu64 "\n",
 	       (uint64_t)stats->throttled_calls);
 	printf("peak_delay_ns=%" PRIu64 "\n", (uint64_t)stats->peak_delay_ns);
-	printf("peak_program=%s\n", stats->peak_program);
+	printf("peak_program_path=%s\n", stats->peak_program_path);
 	printf("peak_uid=%" PRIu32 "\n", stats->peak_uid);
 }
 
@@ -197,8 +216,8 @@ static int read_snapshot(int descriptor, struct st_configuration_snapshot *snaps
 
 			if (ioctl(descriptor, ST_IOC_GET_PROGRAM, &entry) == -1)
 				goto retry;
-			memcpy(snapshot->programs[index], entry.name,
-			       ST_PROGRAM_NAME_LEN);
+			memcpy(snapshot->programs[index], entry.path,
+			       ST_PROGRAM_PATH_LEN);
 		}
 		for (index = 0; index < snapshot->config.uid_count; index++) {
 			struct st_uid_entry entry = {
@@ -318,7 +337,7 @@ static int show_configuration(int descriptor, bool raw) {
 	printf("  Ritardo massimo: %.3f ms\n", (double)stats.peak_delay_ns / 1e6);
 	if (stats.peak_delay_ns)
 		printf("  Processo del ritardo massimo: %s (EUID %" PRIu32 ")\n",
-		       stats.peak_program, stats.peak_uid);
+		       stats.peak_program_path, stats.peak_uid);
 	else
 		puts("  Processo del ritardo massimo: (nessuno)");
 	puts("\nUsare 'show --raw' per i valori numerici non formattati.");
@@ -332,93 +351,177 @@ static int next_option_value(int argc, char **argv, int *index, const char **val
 	return 0;
 }
 
-static int prepare_configuration(int argc, char **argv, struct st_configuration_update *update) {
-	bool state_selected = false;
+static int prepare_configuration(int argc, char **argv,
+				 struct st_configuration_request *request) {
 	int index;
 
-	memset(update, 0, sizeof(*update));
+	memset(request, 0, sizeof(*request));
 	for (index = 2; index < argc; index++) {
 		const char *value;
 
 		if (!strcmp(argv[index], "--clear")) {
-			update->flags |= ST_CONFIGURE_CLEAR;
+			request->clear = true;
 		} else if (!strcmp(argv[index], "--reset-stats")) {
-			update->flags |= ST_CONFIGURE_RESET_STATS;
+			request->reset_stats = true;
 		} else if (!strcmp(argv[index], "--enable") ||
 			   !strcmp(argv[index], "--disable")) {
-			__u8 enabled = !strcmp(argv[index], "--enable");
+			bool enabled = !strcmp(argv[index], "--enable");
 
-			if (state_selected && update->enabled != enabled) {
+			if (request->state_selected && request->enabled != enabled) {
 				fprintf(stderr, "--enable e --disable non possono essere usati insieme\n");
 				return -1;
 			}
-			state_selected = true;
-			update->flags |= ST_CONFIGURE_SET_ENABLED;
-			update->enabled = enabled;
+			request->state_selected = true;
+			request->enabled = enabled;
 		} else if (!strcmp(argv[index], "--max")) {
 			if (next_option_value(argc, argv, &index, &value) ||
-			    parse_u32(value, &update->max_per_second) ||
-			    !update->max_per_second ||
-			    update->max_per_second > ST_MAX_LIMIT) {
+			    parse_u32(value, &request->max_per_second) ||
+			    !request->max_per_second ||
+			    request->max_per_second > ST_MAX_LIMIT) {
 				fprintf(stderr, "valore non valido per --max\n");
 				return -1;
 			}
-			update->flags |= ST_CONFIGURE_SET_MAX;
+			request->set_max = true;
 		} else if (!strcmp(argv[index], "--program")) {
-			if (update->program_count == ST_MAX_PROGRAMS ||
+			if (request->program_count == ST_MAX_PROGRAMS ||
 			    next_option_value(argc, argv, &index, &value) ||
 			    prepare_program(value,
-				&update->programs[update->program_count])) {
+				&request->programs[request->program_count])) {
 				fprintf(stderr, "valore --program non valido o troppi programmi\n");
 				return -1;
 			}
-			update->program_count++;
+			request->program_count++;
 		} else if (!strcmp(argv[index], "--uid")) {
-			if (update->uid_count == ST_MAX_UIDS ||
+			if (request->uid_count == ST_MAX_UIDS ||
 			    next_option_value(argc, argv, &index, &value) ||
-			    parse_u32(value, &update->uids[update->uid_count].value)) {
+			    parse_u32(value,
+				      &request->uids[request->uid_count].value)) {
 				fprintf(stderr, "valore --uid non valido o troppi UID\n");
 				return -1;
 			}
-			update->uid_count++;
+			request->uid_count++;
 		} else if (!strcmp(argv[index], "--syscall")) {
-			if (update->syscall_count == ST_MAX_SYSCALLS ||
+			if (request->syscall_count == ST_MAX_SYSCALLS ||
 			    next_option_value(argc, argv, &index, &value) ||
 			    st_resolve_syscall(value,
-				&update->syscalls[update->syscall_count].number)) {
+				&request->syscalls[request->syscall_count].number)) {
 				fprintf(stderr, "valore --syscall non valido o sconosciuto\n");
 				return -1;
 			}
-			update->syscall_count++;
+			request->syscall_count++;
 		} else {
 			fprintf(stderr, "opzione configure sconosciuta: %s\n", argv[index]);
 			return -1;
 		}
 	}
-	if (!update->flags && !update->program_count && !update->uid_count &&
-	    !update->syscall_count) {
+	if (!request->clear && !request->reset_stats && !request->set_max &&
+	    !request->state_selected && !request->program_count &&
+	    !request->uid_count && !request->syscall_count) {
 		fprintf(stderr, "configure richiede almeno un'opzione\n");
 		return -1;
 	}
 	return 0;
 }
 
+static int remove_snapshot(int descriptor,
+			   const struct st_configuration_snapshot *snapshot) {
+	struct st_program program;
+	struct st_syscall syscall;
+	struct st_uid uid;
+	__u32 index;
+
+	for (index = 0; index < snapshot->config.program_count; index++) {
+		memset(&program, 0, sizeof(program));
+		memcpy(program.path, snapshot->programs[index],
+		       ST_PROGRAM_PATH_LEN);
+		if (ioctl(descriptor, ST_IOC_REMOVE_PROGRAM, &program) == -1 &&
+		    errno != ENOENT)
+			return -1;
+	}
+	for (index = 0; index < snapshot->config.uid_count; index++) {
+		uid.value = snapshot->uids[index];
+		if (ioctl(descriptor, ST_IOC_REMOVE_UID, &uid) == -1 &&
+		    errno != ENOENT)
+			return -1;
+	}
+	for (index = 0; index < snapshot->config.syscall_count; index++) {
+		syscall.number = snapshot->syscalls[index];
+		if (ioctl(descriptor, ST_IOC_REMOVE_SYSCALL, &syscall) == -1 &&
+		    errno != ENOENT)
+			return -1;
+	}
+	return 0;
+}
+
+static int add_ignoring_duplicate(int descriptor, unsigned long command,
+				  const void *value) {
+	if (ioctl(descriptor, command, value) == 0 || errno == EEXIST)
+		return 0;
+	return -1;
+}
+
+static int apply_configuration(int descriptor,
+			       const struct st_configuration_request *request) {
+	struct st_configuration_snapshot snapshot = { 0 };
+	bool final_enabled;
+	__u32 default_max = 1;
+	__u32 index;
+
+	if (read_snapshot(descriptor, &snapshot) == -1 ||
+	    ioctl(descriptor, ST_IOC_DISABLE) == -1)
+		return -1;
+
+	if (request->clear &&
+	    (remove_snapshot(descriptor, &snapshot) == -1 ||
+	     ioctl(descriptor, ST_IOC_SET_MAX, &default_max) == -1 ||
+	     ioctl(descriptor, ST_IOC_RESET_STATS) == -1))
+		return -1;
+
+	for (index = 0; index < request->program_count; index++) {
+		if (add_ignoring_duplicate(descriptor, ST_IOC_ADD_PROGRAM,
+					   &request->programs[index]))
+			return -1;
+	}
+	for (index = 0; index < request->uid_count; index++) {
+		if (add_ignoring_duplicate(descriptor, ST_IOC_ADD_UID,
+					   &request->uids[index]))
+			return -1;
+	}
+	for (index = 0; index < request->syscall_count; index++) {
+		if (add_ignoring_duplicate(descriptor, ST_IOC_ADD_SYSCALL,
+					   &request->syscalls[index]))
+			return -1;
+	}
+	if (request->set_max &&
+	    ioctl(descriptor, ST_IOC_SET_MAX, &request->max_per_second) == -1)
+		return -1;
+	if (request->reset_stats && !request->clear &&
+	    ioctl(descriptor, ST_IOC_RESET_STATS) == -1)
+		return -1;
+
+	final_enabled = request->state_selected ? request->enabled :
+			request->clear ? false : snapshot.config.enabled;
+	if (final_enabled && ioctl(descriptor, ST_IOC_ENABLE) == -1)
+		return -1;
+	return 0;
+}
+
 static int handle_configuration(int descriptor, int argc, char **argv) {
-	struct st_configuration_update *update;
+	struct st_configuration_request *request;
 	int result;
 
-	update = calloc(1, sizeof(*update));
-	if (!update) {
+	request = calloc(1, sizeof(*request));
+	if (!request) {
 		errno = ENOMEM;
 		return -1;
 	}
-	if (prepare_configuration(argc, argv, update)) {
-		free(update);
+	if (prepare_configuration(argc, argv, request)) {
+		free(request);
 		errno = EINVAL;
 		return -1;
 	}
-	result = ioctl(descriptor, ST_IOC_CONFIGURE, update);
-	free(update);
+	result = apply_configuration(descriptor, request);
+	free(request);
 	if (result == -1)
 		return -1;
 	puts("Configurazione applicata.");
@@ -453,11 +556,11 @@ int main(int argc, char **argv) {
 	if (!strcmp(argv[1], "configure")) {
 		result = handle_configuration(descriptor, argc, argv);
 	} else if (!strcmp(argv[1], "clear") && argc == 2) {
-		struct st_configuration_update clear_update = {
-			.flags = ST_CONFIGURE_CLEAR,
+		struct st_configuration_request request = {
+			.clear = true,
 		};
 
-		result = ioctl(descriptor, ST_IOC_CONFIGURE, &clear_update);
+		result = apply_configuration(descriptor, &request);
 		if (result != -1)
 			result = show_configuration(descriptor, false);
 	} else if (!strcmp(argv[1], "show") && (argc == 2 || (argc == 3 && !strcmp(argv[2], "--raw")))) {
@@ -483,7 +586,7 @@ int main(int argc, char **argv) {
 		unsigned long command;
 
 		if (prepare_program(argv[2], &program)) {
-			fprintf(stderr, "nome programma non valido: %s\n", argv[2]);
+			fprintf(stderr, "path eseguibile non valido: %s\n", argv[2]);
 			errno = EINVAL;
 			goto failure;
 		}
